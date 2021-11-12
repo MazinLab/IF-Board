@@ -2,6 +2,11 @@
 #define INTEGRATED_CIRCUIT
 
 
+//shared includes 
+#include <bitset>
+#include <iostream>
+#include <string>
+
 class IC
 {
     public:

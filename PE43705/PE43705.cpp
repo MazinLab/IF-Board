@@ -1,38 +1,39 @@
 #include "PE43705.h"
 
+std::bitset<8> binary_I;
+std::bitset<8> binary_Q;
 
-
-
-
-
-double attenuation_I;
-double attenuation_Q;
-
-void PE43705::set_attenuation(int channel, double &attenuation)
+void PE43705::set_attenuation(int channel, double attenuation)
 {
 
     
     //all attenuation values in dB
-    if (attenuation > 31.75 || attenuation < 0.25)
+    if (attenuation < 31.75 || attenuation > 0.25)
     {
-        std::printf("error, input exceeded the minimum(0.25 Db) or maximum(31.75 dB) attenuation possible");
+        std::printf("error, input exceeded the minimum(0.25 dB) or maximum(31.75 dB) attenuation possible");
+        return;
     }
     else if (floor(attenuation*4) ==! attenuation*4)
     {
         std::printf("error, acceptable attenuation inputs must be multiples of 0.25");
+        return;
     }
         
-    //if it passes these tests to determine whether it is an acceptable attenuation value, store the value
+    //if it passes these tests to determine whether it is an acceptable attenuation value, convert/store the value
     if (channel == I_CHANNEL)
     {
-        attenuation_I *attenuation;
+        //convert attenuation to the binary attenuation word by multiplying by 4.
+        //This results in an 7 bit number, but because the MSB must be 0 bitset<8>
+        //works because it defaults empty bits to 0.
+        std::bitset<8> binary_I(attenuation*4); 
+        PE43705::writereg(I_CHANNEL, binary_I);
     }
     else if (channel == Q_CHANNEL)
     {
-        attenuation_Q *attenuation;
+        //see above comment
+        std::bitset<8> binary_Q(attenuation*4);
+        PE43705::writereg(Q_CHANNEL, binary_Q);
     }
-        
-    
     
     
     /*
@@ -69,21 +70,43 @@ void PE43705::set_attenuation(int channel, double &attenuation)
 
 void PE43705::get_attenuation(int channel)
 {
-    if(attenuation_I || attenuation_Q ==!0)
+    if(channel == I_CHANNEL)
     {
-        if (channel == I_CHANNEL)
+        if (binary_I==!0)
         {
-            std::cout << attenuation_I;
+            std::string string_I(binary_I.to_string()); //converts the binary attenuation value to a string of binary numbers
+            int atten_I(stoi(string_I,0,2)); //converts the string of binary numbers to an integer value
+            std::cout <<"Attenuation: "<< atten_I/4.0 <<" dB"<<std::endl; //divides the integer value by 4 to get the original attenuation back in dB
+            return;
         }
-        else if (channel == Q_CHANNEL)
+        else
         {
-            std::cout << attenuation_Q;
+            std::printf("No Attenuation has been set for Channel I");
+            return;
         }
     }
-    else if(attenuation_I && attenuation_Q == 0)
+    else if (channel == Q_CHANNEL)
+    {    
+        if (binary_Q ==! 0)
         {
-            std::printf("No Attenuation has been set");
+            //Q-channel comments are identical to I-Channel above
+            std::string string_Q(binary_Q.to_string());
+            int atten_Q(stoi(string_Q, 0,2));
+            std::cout << "Attenuation: "<< atten_Q/4.0 <<" dB"<<std::endl;
+            return;
         }
+        else
+        {
+            std::printf("No Attenuation has been set for Channel Q");
+            return;
+        }
+    }
+    else
+        {
+            printf("Error, not a valid channel");
+            return;
+        }
+    
         
 
 }

@@ -2,7 +2,6 @@
 #define VOLTAGE_CONTROLLED_OSCILLATOR
 
 
-#include <iostream>
 #include "IC.h"
 
 //pin definitions

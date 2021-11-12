@@ -56,7 +56,7 @@ bool load_defaults()
 
 bool tell_status()
 {
-    oscillator.get_register(); 
+    oscillator.get_register(0b00010); 
     attenuator.get_attenuation(I_CHANNEL);
     attenuator.get_attenuation(Q_CHANNEL);
     return true;

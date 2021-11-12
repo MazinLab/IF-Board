@@ -2,7 +2,7 @@
 #define DIGITAL_ATTENUATOR
 
 #include "IC.h"
-#include <iostream>
+
 
 //One channel per each individual physical multiple of the chip(ie: we have two chips)
 #define I_CHANNEL 0b00000000 //Upon startup, pin a0 a1 a2 of the I channel attenuator should be set low to easily reference it's address
@@ -30,6 +30,10 @@ class PE43705 : public IC
     public:
         
         int channel;
+        /*----------------------------
+        Low Level Methods for PE43705
+        -----------------------------*/
+        void writereg(int channel, std::bitset<8> attenuation);
 
         /*----------------------------
         High Level Methods for PE43705
@@ -45,7 +49,7 @@ class PE43705 : public IC
         void enable_defaults(int channel);
         
         //set the attenuation of the chip
-        void set_attenuation(int channel, double &attenuation);
+        void set_attenuation(int channel, double attenuation);
 
         //'gets' the attenuation of the chip from the previously set attenuation
         void get_attenuation(int channel);
