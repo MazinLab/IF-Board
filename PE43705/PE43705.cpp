@@ -6,7 +6,6 @@ std::bitset<8> binary_Q;
 void PE43705::set_attenuation(int channel, double attenuation)
 {
 
-    
     //all attenuation values in dB
     if (attenuation < 31.75 || attenuation > 0.25)
     {
@@ -23,15 +22,21 @@ void PE43705::set_attenuation(int channel, double attenuation)
     if (channel == I_CHANNEL)
     {
         //convert attenuation to the binary attenuation word by multiplying by 4.
-        //This results in an 7 bit number, but because the MSB must be 0 bitset<8>
+        //This results in an 7 bit number, but because the MSB must be 0, bitset<8>
         //works because it defaults empty bits to 0.
-        std::bitset<8> binary_I(attenuation*4); 
+       
+        //converts attenuation to binary attenuation word       
+        std::bitset<8> binary_I(attenuation*4);
+        //passes binary attenuation word to global variable for other function calls
+        PE43705::ltog(I_CHANNEL, binary_I);
+        //passes binary attenuation word to the register
         PE43705::writereg(I_CHANNEL, binary_I);
     }
     else if (channel == Q_CHANNEL)
     {
-        //see above comment
+        //see above comments
         std::bitset<8> binary_Q(attenuation*4);
+        PE43705::ltog(Q_CHANNEL, binary_Q);
         PE43705::writereg(Q_CHANNEL, binary_Q);
     }
     
@@ -102,10 +107,10 @@ void PE43705::get_attenuation(int channel)
         }
     }
     else
-        {
-            printf("Error, not a valid channel");
-            return;
-        }
+    {
+        printf("Error, not a valid channel");
+        return;
+    }
     
         
 
@@ -131,4 +136,28 @@ void PE43705::load_defaults(int channel)
 void PE43705::enable_defaults(int channel)
 {
 //no clue how to do this, focus on learning register stuff first
+}
+
+////writes the attenuation word to the register at the correct address
+void PE43705::writereg(int channel, std::bitset<8> attenuation_word)
+{
+//pain
+}
+
+//stores a local variable globally for passing attenuation values from one function to the next
+void PE43705::ltog(int channel, std::bitset<8> &binary_attenuation)
+{
+    if (channel == I_CHANNEL)
+    {
+        binary_I = binary_attenuation;
+    }
+    else if (channel == Q_CHANNEL)
+    {
+        binary_Q = binary_attenuation;
+    }
+    else
+    {
+        std::printf("Channel called in ltog function does not exist");
+        return;
+    }
 }

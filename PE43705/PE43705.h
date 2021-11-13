@@ -33,7 +33,11 @@ class PE43705 : public IC
         /*----------------------------
         Low Level Methods for PE43705
         -----------------------------*/
+        //writes the attenuation word to the register
         void writereg(int channel, std::bitset<8> attenuation);
+
+        //stores a local variable globally for passing attenuation values from one function to the next
+        void ltog(int channel, std::bitset<8> &binary_attenuation);
 
         /*----------------------------
         High Level Methods for PE43705
