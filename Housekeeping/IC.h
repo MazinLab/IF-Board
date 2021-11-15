@@ -6,7 +6,8 @@
 #include <bitset>
 #include <iostream>
 #include <string>
-//#include <Arduino.h>
+#include <Arduino.h>
+
 
 class IC
 {
