@@ -7,7 +7,7 @@
 #include <iostream>
 #include <string>
 #include <Arduino.h>
-
+#include <SPI.h>
 
 class IC
 {
