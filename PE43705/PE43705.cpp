@@ -1,9 +1,8 @@
 #include "PE43705.h"
 
-std::bitset<8> binary_I;
-std::bitset<8> binary_Q;
 
-void PE43705::set_attenuation(int channel, double attenuation)
+
+void PE43705::set_attenuation(std::bitset<16> channel, double attenuation)
 {
 
     //all attenuation values in dB
@@ -24,10 +23,10 @@ void PE43705::set_attenuation(int channel, double attenuation)
         //convert attenuation to the binary attenuation word by multiplying by 4.
         //This results in an 7 bit number, but because the MSB must be 0, bitset<8>
         //works because it defaults empty bits to 0.
-       
+    
         //converts attenuation to binary attenuation word       
-        std::bitset<8> binary_I(attenuation*4);
-        //passes binary attenuation word to global variable for other function calls
+        std::bitset<16> binary_I(attenuation*4);
+        //passes binary attenuation to class variable for use by other function calls
         PE43705::ltog(I_CHANNEL, binary_I);
         //passes binary attenuation word to the register
         PE43705::writereg(I_CHANNEL, binary_I);
@@ -35,7 +34,7 @@ void PE43705::set_attenuation(int channel, double attenuation)
     else if (channel == Q_CHANNEL)
     {
         //see above comments
-        std::bitset<8> binary_Q(attenuation*4);
+        std::bitset<16> binary_Q(attenuation*4);
         PE43705::ltog(Q_CHANNEL, binary_Q);
         PE43705::writereg(Q_CHANNEL, binary_Q);
     }
@@ -73,16 +72,16 @@ void PE43705::set_attenuation(int channel, double attenuation)
 
 
 
-void PE43705::get_attenuation(int channel)
+double PE43705::get_attenuation(std::bitset<16> channel)
 {
-    if(channel == I_CHANNEL)
+    if(channel == I_CHANNEL)    
     {
-        if (binary_I==!0)
+        if (binary_I ==! 0)
         {
             std::string string_I(binary_I.to_string()); //converts the binary attenuation value to a string of binary numbers
             int atten_I(stoi(string_I,0,2)); //converts the string of binary numbers to an integer value
             std::cout <<"Attenuation: "<< atten_I/4.0 <<" dB"<<std::endl; //divides the integer value by 4 to get the original attenuation back in dB
-            return;
+            return atten_I/4.0; //returns the value of the attenuation
         }
         else
         {
@@ -98,7 +97,7 @@ void PE43705::get_attenuation(int channel)
             std::string string_Q(binary_Q.to_string());
             int atten_Q(stoi(string_Q, 0,2));
             std::cout << "Attenuation: "<< atten_Q/4.0 <<" dB"<<std::endl;
-            return;
+            return atten_Q/4.0;
         }
         else
         {
@@ -117,35 +116,42 @@ void PE43705::get_attenuation(int channel)
 }
 
 //applies defaults
-void PE43705::defaults(int channel)
+void PE43705::defaults(std::bitset<16> channel)
 {
-    //I_channel attenuator address pins A0, A1, A2 need to be held low
-    //Q_Channel attenuator address pins A0, A1, A2 need to be held high
-
     //what should default attenuation be?
     
 }
 
 //load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
-void PE43705::load_defaults(int channel)
+void PE43705::load_defaults(std::bitset<16> channel)
 {
 //no clue how to do this without taking up large chunks of memory; focus on learning register stuff first
 }
 
 //enable defaults: If enabled, stored settings will be applied at power up
-void PE43705::enable_defaults(int channel)
+void PE43705::enable_defaults(std::bitset<16> channel)
 {
 //no clue how to do this, focus on learning register stuff first
 }
 
 ////writes the attenuation word to the register at the correct address
-void PE43705::writereg(int channel, std::bitset<8> attenuation_word)
+void PE43705::writereg(std::bitset<16> channel, std::bitset<16> atten_binary)
 {
-//pain
+    if (channel ==! I_CHANNEL || Q_CHANNEL)
+    {
+        std::printf("Channel called in writereg function does not exist");
+        return;
+    }
+    
+    //bitwise inclusive OR operator adds channel and binary arguments to obtain the final 16 bit attenuation word
+    std::bitset<16> atten_word = channel | atten_binary;
+
+    //now somehow parse the word and send it to the chips + SPI Protocol
+    
 }
 
-//stores a local variable globally for passing attenuation values from one function to the next
-void PE43705::ltog(int channel, std::bitset<8> &binary_attenuation)
+//alters the scope of the variable from local to class(global) for passing attenuation values from one function to the next
+void PE43705::ltog(std::bitset<16> channel, std::bitset<16> &binary_attenuation)
 {
     if (channel == I_CHANNEL)
     {

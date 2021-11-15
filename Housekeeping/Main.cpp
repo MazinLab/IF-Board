@@ -9,8 +9,8 @@ TRF3765 oscillator;
 //runs once to setup
 void setup()
 {
-    //set a0, a1, a2 for channel_I attenuator to LOW
-    //set a0, a1, a2 for channel_Q attenuator to HIGH
+    //uncomment this once i figure out the right include path for spi library
+    //Serial.begin(115200);
 }
 
 //running on loop

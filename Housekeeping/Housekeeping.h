@@ -2,8 +2,6 @@
 #define HOUSE
 
 
-
-
 #include "TRF3765.h"
 #include "PE43705.h"
 
