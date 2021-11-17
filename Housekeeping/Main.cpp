@@ -9,7 +9,7 @@ TRF3765 oscillator;
 //runs once to setup
 void setup()
 {
-    //uncomment this once i figure out the right include path for spi library
+    
     //Serial.begin(115200);
 }
 

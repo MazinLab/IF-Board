@@ -146,7 +146,7 @@ void PE43705::writereg(std::bitset<16> channel, std::bitset<16> atten_binary)
     //bitwise inclusive OR operator adds channel and binary arguments to obtain the final 16 bit attenuation word
     std::bitset<16> atten_word = channel | atten_binary;
 
-    //now somehow parse the word and send it to the chips + SPI Protocol
+    //now somehow parse the word and send it to the chips + SPI Protocol 
     
 }
 
