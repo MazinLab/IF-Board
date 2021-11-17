@@ -148,6 +148,7 @@ void PE43705::writereg(std::bitset<16> channel, std::bitset<16> atten_binary)
 
     //now somehow parse the word and send it to the chips + SPI Protocol 
     
+    
 }
 
 //alters the scope of the variable from local to class(global) for passing attenuation values from one function to the next
@@ -167,3 +168,4 @@ void PE43705::ltog(std::bitset<16> channel, std::bitset<16> &binary_attenuation)
         return;
     }
 }
+

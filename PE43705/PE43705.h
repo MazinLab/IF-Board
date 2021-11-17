@@ -8,11 +8,12 @@
 #define I_CHANNEL 0b0000000100000000 // A0 = 1, A1 = 0, A2 = 0 (labelled on schematic as IF2RFa, U2) 
 #define Q_CHANNEL 0b0000001000000000 // A0 = 0, A1 = 1, A2 = 0 (labelled on schematic as IF2RFb, U1) 
 
-//Pin Definitions
-#define SERIAL_IN 
-#define LATCH_ENABLE 
-#define CLOCK 
-#define PARALLEL_OR_SERIAL_MODE_SELECT 
+//Pin Definitions(current pin numbers are placeholders and don't correspond to the actual pinouts of the chip)
+#define SERIAL_IN 1
+#define LATCH_ENABLE 2
+#define CLOCK 3
+#define PARALLEL_OR_SERIAL_MODE_SELECT 4
+
 
 
 

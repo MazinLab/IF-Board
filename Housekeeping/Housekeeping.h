@@ -5,6 +5,15 @@
 #include "TRF3765.h"
 #include "PE43705.h"
 
+
+//microcontroller pin defines
+#define DATAOUT 1 //MOSI
+#define DATAIN 2 //MISO
+#define CLK 3 //Clock
+#define CS 4 //Chip Select
+#define LE 5 //Latch Enable
+
+
 /*---------------
 Declaring objects
 ----------------*/
