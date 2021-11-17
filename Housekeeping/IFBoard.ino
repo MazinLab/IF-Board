@@ -17,7 +17,7 @@ void setup()
     pinMode(CS, Output);
     pinMode(LE, Output);
 
-    
+
 }
 
 //running on loop

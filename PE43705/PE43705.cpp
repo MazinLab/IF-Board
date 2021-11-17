@@ -1,5 +1,5 @@
 #include "PE43705.h"
-
+#include "IFBoard.ino"
 
 
 void PE43705::set_attenuation(std::bitset<16> channel, double attenuation)
@@ -146,8 +146,19 @@ void PE43705::writereg(std::bitset<16> channel, std::bitset<16> atten_binary)
     //bitwise inclusive OR operator adds channel and binary arguments to obtain the final 16 bit attenuation word
     std::bitset<16> atten_word = channel | atten_binary;
 
-    //now somehow parse the word and send it to the chips + SPI Protocol 
-    
+
+    //Transfer attenuation word to register
+    digitalWrite(CS, LOW);
+    for (uint16_t i = 0; i < 16; i++)
+    {
+        digitalWrite(LE, HIGH);
+        digitalWrite(LE,LOW);
+        digitalWrite(DATAOUT, atten_word[i]);
+        delay(10);
+        digitalWrite(LE,HIGH);
+        digitalWrite(LE,LOW);
+    }
+    digitalWrite(CS,HIGH);
     
 }
 
