@@ -1,30 +1,18 @@
-#ifndef HOUSE
-#define HOUSE
+#ifndef __HOUSEKEEPING_H__
+#define __HOUSEKEEPING_H__
+
+//Arduino includes
+#include <Arduino.h>
+//Project includes
+#include "pins.h"
+//#include "../PE43705/PE43705.h"
+//#include "../TRF3765/TRF3765.h"
 
 
-#include "TRF3765.h"
-#include "PE43705.h"
-
-
-//microcontroller pin defines
-#define DATAOUT 1 //MOSI
-#define DATAIN 2 //MISO
-#define CLK 3 //Clock
-#define CS 4 //Chip Select
-#define LE 5 //Latch Enable
-
-
-/*---------------
-Declaring objects
-----------------*/
-
-//defining the local oscillator
-TRF3765 oscillator;
-
-//defining the digital attenuator(will take a channel argument)
-PE43705 attenuator;
-    
-
+/*------------
+Timing Defines
+-------------*/
+#define delay_ms 10 //millisecond delay
 
 
 /*-------------------
@@ -34,7 +22,7 @@ Housekeeping Commands
 
 struct Command
 {
-    std::string name;
+    String name;
     bool (*reference_command)();
     bool allow_offline;
 };

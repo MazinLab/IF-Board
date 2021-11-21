@@ -1,14 +1,10 @@
-#ifndef VOLTAGE_CONTROLLED_OSCILLATOR
-#define VOLTAGE_CONTROLLED_OSCILLATOR
+#ifndef __TRF3765_h__
+#define __TRF3765_h__
 
+//Project includes
+#include "../Housekeeping/IC.h"
+#include "../Housekeeping/Housekeeping.h"
 
-#include "IC.h"
-
-//pin definitions
-#define READBACK 6
-#define STROBE 5
-#define CLOCK 4
-#define DATA 3
 
 //inheriting from IC in case there are commonalities to be added at a later date(ie: never)
 class TRF3765 : public IC

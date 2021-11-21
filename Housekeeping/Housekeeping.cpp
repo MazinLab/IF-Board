@@ -1,5 +1,12 @@
 #include "Housekeeping.h"
 
+/*---------------
+Declaring objects
+----------------*/
+//defining the local oscillator
+TRF3765 oscillator;
+//defining the digital attenuator(will take a channel argument)
+PE43705 attenuator;
 
 Command commands[N_COMMANDS]
 {
@@ -28,12 +35,12 @@ Command commands[N_COMMANDS]
 
 bool print_commands()
 {
-    std::cout<< printf("#print_commands - Prints this list of commands\n");
-    std::cout<< printf("#enable_defaults - If enabled, stored settings will be applied at power up\n");
-    std::cout<< printf("#load_defaults - Stored settings will be applied else hard coded defaults will be applied and stored\n");
-    std::cout<< printf("#tell_status - Report all info\n");
-    std::cout<< printf("#reset - Clear all data and reset eprom settings\n");
-    std::cout<< printf("#temperature - Return the temperature sensor reading\n");
+    Serial.println("#print_commands - Prints this list of commands\n");
+    Serial.println("#enable_defaults - If enabled, stored settings will be applied at power up\n");
+    Serial.println("#load_defaults - Stored settings will be applied else hard coded defaults will be applied and stored\n");
+    Serial.println("#tell_status - Report all info\n");
+    Serial.println("#reset - Clear all data and reset eprom settings\n");
+    Serial.println("#temperature - Return the temperature sensor reading\n");
 
     return true;
 }

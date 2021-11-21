@@ -1,21 +1,13 @@
-#ifndef DIGITAL_ATTENUATOR
-#define DIGITAL_ATTENUATOR
+#ifndef __PE43705_h__ 
+#define __PE43705_h__
 
-#include "IC.h"
-
+//Project includes
+#include "../Housekeeping/IC.h"
+#include "../Housekeeping/Housekeeping.h"
 
 //One channel per each individual physical multiple of the chip(ie: we have two chips)
-#define I_CHANNEL 0b0000000100000000 // A0 = 1, A1 = 0, A2 = 0 (labelled on schematic as IF2RFa, U2) 
-#define Q_CHANNEL 0b0000001000000000 // A0 = 0, A1 = 1, A2 = 0 (labelled on schematic as IF2RFb, U1) 
-
-//Pin Definitions(current pin numbers are placeholders and don't correspond to the actual pinouts of the chip)
-#define SERIAL_IN 1
-#define LATCH_ENABLE 2
-#define CLOCK 3
-#define PARALLEL_OR_SERIAL_MODE_SELECT 4
-
-
-
+#define I_CHANNEL 0b00000001 // A0 = 1, A1 = 0, A2 = 0 (labelled on schematic as IF2RFa, U2) 
+#define Q_CHANNEL 0b00000010 // A0 = 0, A1 = 1, A2 = 0 (labelled on schematic as IF2RFb, U1) 
 
 
 
@@ -28,36 +20,36 @@ class PE43705 : public IC
     public:
         
         //declaring attenuation binary storage variables
-        std::bitset<16> binary_I;
-        std::bitset<16> binary_Q;
+        uint8_t attenbyte_I;
+        uint8_t attenbyte_Q;
 
         /*----------------------------
         Low Level Methods for PE43705
         -----------------------------*/
         //writes the attenuation word to the register
-        void writereg(std::bitset<16> channel, std::bitset<16> attenuation);
+        void writereg(uint8_t channel, uint8_t attenbyte);
 
         //stores a local variable globally for passing attenuation values from one function to the next
-        void ltog(std::bitset<16> channel, std::bitset<16> &binary_attenuation);
+        void ltog(uint8_t channel, uint8_t &attenuation_byte);
 
         /*----------------------------
         High Level Methods for PE43705
         -----------------------------*/
         
         //Applies hard coded defaults
-        void defaults(std::bitset<16> channel);
+        void defaults(uint8_t channel);
 
         //load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
-        void load_defaults(std::bitset<16> channel);
+        void load_defaults(uint8_t channel);
 
         //enable defaults: If enabled, stored settings will be applied at power up
-        void enable_defaults(std::bitset<16> channel);
+        void enable_defaults(uint8_t channel);
         
         //set the attenuation of the chip
-        void set_attenuation(std::bitset<16> channel, double attenuation);
+        void set_attenuation(uint8_t channel, double attenuation);
 
         //'gets' the attenuation of the chip from the previously set attenuation
-        double get_attenuation(std::bitset<16> channel);
+        double get_attenuation(uint8_t channel);
 
 };
 

@@ -49,7 +49,7 @@ void TRF3765::get_register(int address)
     }
     else
     {
-        std::printf("invalid register address");
+        Serial.println("invalid register address");
     }
 
     //set into readback mode

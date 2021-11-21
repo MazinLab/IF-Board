@@ -1,29 +1,11 @@
-#ifndef INTEGRATED_CIRCUIT  
-#define INTEGRATED_CIRCUIT
-
-
-//shared includes 
-#include <bitset>
-#include <iostream>
-#include <string>
-#include <Arduino.h>
-
+#ifndef __IC_H__  
+#define __IC_H__
 
 class IC
 {
     public:
     
 };
-
-
-
-
-
-
-
-
-
-
 
 
 #endif

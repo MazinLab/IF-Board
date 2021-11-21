@@ -1,19 +1,19 @@
 #include "PE43705.h"
-#include "IFBoard.ino"
 
 
-void PE43705::set_attenuation(std::bitset<16> channel, double attenuation)
+
+void PE43705::set_attenuation(uint8_t channel, double attenuation)
 {
 
     //all attenuation values in dB
     if (attenuation < 31.75 || attenuation > 0.25)
     {
-        std::printf("error, input exceeded the minimum(0.25 dB) or maximum(31.75 dB) attenuation possible");
+        Serial.println("error, input exceeded the minimum(0.25 dB) or maximum(31.75 dB) attenuation possible");
         return;
     }
     else if (floor(attenuation*4) ==! attenuation*4)
     {
-        std::printf("error, acceptable attenuation inputs must be multiples of 0.25");
+        Serial.println("error, acceptable attenuation inputs must be multiples of 0.25");
         return;
     }
         
@@ -21,161 +21,135 @@ void PE43705::set_attenuation(std::bitset<16> channel, double attenuation)
     if (channel == I_CHANNEL)
     {
         //convert attenuation to the binary attenuation word by multiplying by 4.
-        //This results in an 7 bit number, but because the MSB must be 0, bitset<8>
-        //works because it defaults empty bits to 0.
+        //The valid range of attenuations multiplied by 4 converted to binary is a 7 bit number.
+        //The MSB must be 0, and typecasting it to a uint8_t works because it defaults empty bits to 0.
     
         //converts attenuation to binary attenuation word       
-        std::bitset<16> binary_I(attenuation*4);
+        uint8_t attenbyte_I(attenuation*4);
         //passes binary attenuation to class variable for use by other function calls
-        PE43705::ltog(I_CHANNEL, binary_I);
+        PE43705::ltog(I_CHANNEL, attenbyte_I);
         //passes binary attenuation word to the register
-        PE43705::writereg(I_CHANNEL, binary_I);
+        PE43705::writereg(I_CHANNEL, attenbyte_I);
     }
     else if (channel == Q_CHANNEL)
     {
         //see above comments
-        std::bitset<16> binary_Q(attenuation*4);
-        PE43705::ltog(Q_CHANNEL, binary_Q);
-        PE43705::writereg(Q_CHANNEL, binary_Q);
+        uint8_t attenbyte_Q(attenuation*4);
+        PE43705::ltog(Q_CHANNEL, attenbyte_Q);
+        PE43705::writereg(Q_CHANNEL, attenbyte_Q);
     }
-    
-    
-    /*
-    The attenuation word is given by multiplying by 4 and converting to binary.
-    
-    For example, the attenuation of 18.25 Db is multiplied by 4 to yield 73.
-    73 in binary is 1001001. However, the attenuation word consists of 8 bits.
-    The most significant bit MUST be 0, so the attenuation word for this state is
-    01001001.
-
-    
-    The serial interface is controlled using three CMOS compatible signals: 
-    serial-in (SI), clock (CLK), and latch
-    enable (LE). The SI and CLK inputs allow data to be
-    serially entered into the shift register. Serial data is
-    clocked in LSB first, beginning with the attenuation
-    word.
-    The shift register must be loaded while LE is held
-    LOW to prevent the attenuator value from changing
-    as data is entered. The LE input should then be
-    toggled HIGH and brought LOW again, latching the
-    new data into the DSA
-    */
-   
-   
-   //Todo list?
-   //unsure how to actually tell the computer to input bits into the register
-   //unsure how to convert attenuation inputs into binary
 
 }
 
 
 
 
-double PE43705::get_attenuation(std::bitset<16> channel)
+double PE43705::get_attenuation(uint8_t channel)
 {
     if(channel == I_CHANNEL)    
     {
-        if (binary_I ==! 0)
+        if (attenbyte_I ==! 0)
         {
-            std::string string_I(binary_I.to_string()); //converts the binary attenuation value to a string of binary numbers
-            int atten_I(stoi(string_I,0,2)); //converts the string of binary numbers to an integer value
-            std::cout <<"Attenuation: "<< atten_I/4.0 <<" dB"<<std::endl; //divides the integer value by 4 to get the original attenuation back in dB
+            int atten_I = attenbyte_I; //typecasts the byte to an int
+            Serial.print("Attenuation: ");
+            Serial.print(atten_I/4.0 ); //divides the integer value by 4 to get the original attenuation back in dB
+            Serial.print(" dB"); 
             return atten_I/4.0; //returns the value of the attenuation
         }
         else
         {
-            std::printf("No Attenuation has been set for Channel I");
+            Serial.println  ("No Attenuation has been set for Channel I");
             return;
         }
     }
     else if (channel == Q_CHANNEL)
     {    
-        if (binary_Q ==! 0)
+        if (attenbyte_Q==! 0)
         {
             //Q-channel comments are identical to I-Channel above
-            std::string string_Q(binary_Q.to_string());
-            int atten_Q(stoi(string_Q, 0,2));
-            std::cout << "Attenuation: "<< atten_Q/4.0 <<" dB"<<std::endl;
+            int atten_Q = attenbyte_Q;
+            Serial.print("Attenuation: ");
+            Serial.print(atten_Q/4.0 ); 
+            Serial.print(" dB"); 
             return atten_Q/4.0;
         }
         else
         {
-            std::printf("No Attenuation has been set for Channel Q");
+            Serial.println("No Attenuation has been set for Channel Q");
             return;
         }
     }
     else
     {
-        printf("Error, not a valid channel");
+        Serial.println("Error, not a valid channel");
         return;
     }
-    
-        
 
 }
 
 //applies defaults
-void PE43705::defaults(std::bitset<16> channel)
+void PE43705::defaults(uint8_t channel)
 {
     //what should default attenuation be?
     
 }
 
 //load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
-void PE43705::load_defaults(std::bitset<16> channel)
+void PE43705::load_defaults(uint8_t channel)
 {
 //no clue how to do this without taking up large chunks of memory; focus on learning register stuff first
 }
 
 //enable defaults: If enabled, stored settings will be applied at power up
-void PE43705::enable_defaults(std::bitset<16> channel)
+void PE43705::enable_defaults(uint8_t channel)
 {
 //no clue how to do this, focus on learning register stuff first
 }
 
 ////writes the attenuation word to the register at the correct address
-void PE43705::writereg(std::bitset<16> channel, std::bitset<16> atten_binary)
+void PE43705::writereg(uint8_t channel, uint8_t attenbyte)
 {
     if (channel ==! I_CHANNEL || Q_CHANNEL)
     {
-        std::printf("Channel called in writereg function does not exist");
+        Serial.println("Channel called in writereg function does not exist");
         return;
     }
     
-    //bitwise inclusive OR operator adds channel and binary arguments to obtain the final 16 bit attenuation word
-    std::bitset<16> atten_word = channel | atten_binary;
+    
+    uint16_t atten_word; //defines the 16 bit attenuation word
+    atten_word = (uint16_t)channel; //typecasts the 8bit channel to a 16bit number, and stores it in atten_word
+    atten_word << 8; //bitshifts the channel so that the channel is the leftmost byte: (XXXX XXXX) 0000 0000
+    atten_word = atten_word | (uint16_t)attenbyte; //bitwise inclusive OR to add the typecasted attenuation byte to the bitshifted channel to obtain the final 16 bit attenuation word
 
 
     //Transfer attenuation word to register
-    digitalWrite(CS, LOW);
-    for (uint16_t i = 0; i < 16; i++)
+    digitalWrite(LE, LOW);
+    for (int i = 0; i < 16; i++)
     {
+        digitalWrite(DATAOUT, ((atten_word>>i)&1));
+        delay(delay_ms);
         digitalWrite(LE, HIGH);
         digitalWrite(LE,LOW);
-        digitalWrite(DATAOUT, atten_word[i]);
-        delay(10);
-        digitalWrite(LE,HIGH);
-        digitalWrite(LE,LOW);
     }
-    digitalWrite(CS,HIGH);
+    digitalWrite(LE, HIGH);
+    
     
 }
 
 //alters the scope of the variable from local to class(global) for passing attenuation values from one function to the next
-void PE43705::ltog(std::bitset<16> channel, std::bitset<16> &binary_attenuation)
+void PE43705::ltog(uint8_t channel, uint8_t &attenuation_byte)
 {
     if (channel == I_CHANNEL)
     {
-        binary_I = binary_attenuation;
+        attenbyte_I = attenuation_byte;
     }
     else if (channel == Q_CHANNEL)
     {
-        binary_Q = binary_attenuation;
+        attenbyte_Q = attenuation_byte;
     }
     else
     {
-        std::printf("Channel called in ltog function does not exist");
+        Serial.println("Channel called in ltog function does not exist");
         return;
     }
 }
