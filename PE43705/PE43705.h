@@ -36,8 +36,8 @@ class PE43705 : public IC
         High Level Methods for PE43705
         -----------------------------*/
         
-        //Applies hard coded defaults
-        void defaults(uint8_t channel);
+        //Applies hard coded defaults, clears eeprom 
+        void reset(uint8_t channel);
 
         //load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
         void load_defaults(uint8_t channel);

@@ -30,6 +30,7 @@ void PE43705::set_attenuation(uint8_t channel, double attenuation)
         PE43705::ltog(I_CHANNEL, attenbyte_I);
         //passes binary attenuation word to the register
         PE43705::writereg(I_CHANNEL, attenbyte_I);
+        Serial.println("I_CHANNEL Attenuation set");
     }
     else if (channel == Q_CHANNEL)
     {
@@ -37,6 +38,7 @@ void PE43705::set_attenuation(uint8_t channel, double attenuation)
         uint8_t attenbyte_Q(attenuation*4);
         PE43705::ltog(Q_CHANNEL, attenbyte_Q);
         PE43705::writereg(Q_CHANNEL, attenbyte_Q);
+        Serial.println("Q_CHANNEL Attenuation set");
     }
 
 }
@@ -64,7 +66,7 @@ double PE43705::get_attenuation(uint8_t channel)
     }
     else if (channel == Q_CHANNEL)
     {    
-        if (attenbyte_Q==! 0)
+        if (attenbyte_Q ==! 0)
         {
             //Q-channel comments are identical to I-Channel above
             int atten_Q = attenbyte_Q;
@@ -88,22 +90,28 @@ double PE43705::get_attenuation(uint8_t channel)
 }
 
 //applies defaults
-void PE43705::defaults(uint8_t channel)
+void PE43705::reset(uint8_t channel)
 {
-    //what should default attenuation be?
-    
+    set_attenuation(channel, DEFAULT_ATTENUATION);
 }
 
 //load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
 void PE43705::load_defaults(uint8_t channel)
 {
-//no clue how to do this without taking up large chunks of memory; focus on learning register stuff first
+
 }
 
 //enable defaults: If enabled, stored settings will be applied at power up
 void PE43705::enable_defaults(uint8_t channel)
 {
-//no clue how to do this, focus on learning register stuff first
+    /*if (enable == true)
+    {
+        load_defaults(channel); //if defaults are enabled, load defaults
+    }
+    else
+    {
+        return; //if defaults are not enabled, don't do anything
+    }*/
 }
 
 ////writes the attenuation word to the register at the correct address
@@ -127,7 +135,7 @@ void PE43705::writereg(uint8_t channel, uint8_t attenbyte)
     for (int i = 0; i < 16; i++)
     {
         digitalWrite(DATAOUT, ((atten_word>>i)&1));
-        delay(delay_ms);
+        delay(DELAY_mS);
         digitalWrite(LE, HIGH);
         digitalWrite(LE,LOW);
     }

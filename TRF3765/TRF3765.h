@@ -26,10 +26,13 @@ class TRF3765 : public IC
         ------------------------------*/
 
        //Set Local Oscillator(LO) to run at value
-       void lo_value (int value);
+       void set_lo (double value);
 
-       //applies hard coded defaults
-       void defaults();
+       //Gets Local Oscillator(LO) value
+       void get_lo ();
+
+       //applies hard coded defaults, resets eeprom
+       void reset();
 
        //load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
        void load_defaults();

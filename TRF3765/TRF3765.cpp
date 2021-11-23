@@ -70,14 +70,20 @@ void TRF3765::set_register(int address)
 }
 
 //Set LO to run at value
-void TRF3765::lo_value(int value)
+void TRF3765::set_lo(double value)
 {
     //set_register()
     //i am in over my head
 }
 
-//applies defaults
-void TRF3765::defaults()
+//Gets LO value
+void TRF3765::get_lo()
+{
+
+}
+
+//applies hardcoded defaults, clears eeprom settings
+void TRF3765::reset()
 {
     // :(
 }
