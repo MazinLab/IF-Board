@@ -1,4 +1,5 @@
 {
     "sketch": "IFBoard.ino",
-    "board": "adafruit:avr:itsybitsy32u4_3V"
+    "board": "adafruit:avr:itsybitsy32u4_3V",
+    "port": "COM7"
 }

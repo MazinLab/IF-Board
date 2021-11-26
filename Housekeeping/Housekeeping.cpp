@@ -87,7 +87,6 @@ bool print_commands()
     Serial.println("#reset - Clear all data and reset eprom settings.");
     Serial.println("#temperature - Return the temperature sensor reading.");
     Serial.println("Note: Valid device names are 'LO', 'ATTEN_I', 'ATTEN_Q', and 'ALL'.");
-    Serial.println("");
 
     return true;
 }
@@ -284,7 +283,7 @@ void interpret_command(String &command)
     }
 
     //temperature structure
-    else if(command == "Structure")
+    else if(command == "temperature")
     {
         temperature();
         Serial.println("");

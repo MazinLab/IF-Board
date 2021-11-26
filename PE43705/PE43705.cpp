@@ -89,9 +89,11 @@ double PE43705::get_attenuation(uint8_t channel)
 
 }
 
-//applies defaults
+//applies defaults, clears eeprom
 void PE43705::reset(uint8_t channel)
 {
+    //clear eeprom
+
     set_attenuation(channel, DEFAULT_ATTENUATION);
 }
 

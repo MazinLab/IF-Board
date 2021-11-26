@@ -34,8 +34,7 @@ struct Command
     bool allow_offline;
 };
 ------------------------------------------------------------------------------------------------------------*/
-
-//PE43705 Commands
+//PE43705 Commands  
 void set_attenuation(String &device, double &attenuation);
 
 //TRF3765 Commands
@@ -50,7 +49,7 @@ bool reset(String &device);
 bool temperature();
 
 //Command UI
-void interpret_command(String &Command);
+void interpret_command(String &command);
 
 
 
