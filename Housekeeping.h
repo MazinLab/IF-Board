@@ -6,8 +6,8 @@
 #include <EEPROM.h>
 //Project includes
 #include "pins.h"
-#include "../PE43705/PE43705.h"
-#include "../TRF3765/TRF3765.h"
+#include "PE43705.h"
+#include "TRF3765.h"
 
 
 
@@ -15,7 +15,7 @@
 /*------------
 Default Defines
 -------------*/
-#define DELAY_mS 10 //millisecond delay
+#define DELAY_mS 1 //millisecond delay
 #define DEFAULT_ATTENUATION 31.75 //Hard codes the default attenuation to be set for the PE43705
 
 

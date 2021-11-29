@@ -2,10 +2,10 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 //Project includes
-#include "PE43705/PE43705.h"
-#include "TRF3765/TRF3765.h"
-#include "Housekeeping/Housekeeping.h"
-#include "Housekeeping/pins.h"
+#include "Housekeeping.h"
+#include "PE43705.h"
+#include "TRF3765.h"
+#include "pins.h"
 
 
 

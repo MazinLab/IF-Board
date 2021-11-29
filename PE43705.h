@@ -2,8 +2,8 @@
 #define __PE43705_h__
 
 //Project includes
-#include "../Housekeeping/IC.h"
-#include "../Housekeeping/Housekeeping.h"
+#include "IC.h"
+#include "Housekeeping.h"
 
 //One channel per each individual physical multiple of the chip(ie: we have two chips)
 #define I_CHANNEL 0b00000001 // A0 = 1, A1 = 0, A2 = 0 (labelled on schematic as IF2RFa, U2) 
@@ -49,7 +49,7 @@ class PE43705 : public IC
         void set_attenuation(uint8_t channel, double attenuation);
 
         //'gets' the attenuation of the chip from the previously set attenuation
-        double get_attenuation(uint8_t channel);
+        void get_attenuation(uint8_t channel);
 
 };
 

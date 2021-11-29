@@ -2,8 +2,8 @@
 #define __TRF3765_h__
 
 //Project includes
-#include "../Housekeeping/IC.h"
-#include "../Housekeeping/Housekeeping.h"
+#include "IC.h"
+#include "Housekeeping.h"
 
 
 //inheriting from IC in case there are commonalities to be added at a later date(ie: never)

@@ -6,14 +6,19 @@ void PE43705::set_attenuation(uint8_t channel, double attenuation)
 {
 
     //all attenuation values in dB
-    if (attenuation < 31.75 || attenuation > 0.25)
+    if (attenuation < 0.25)
     {
-        Serial.println("error, input exceeded the minimum(0.25 dB) or maximum(31.75 dB) attenuation possible");
+        Serial.println("ERROR: input exceeded the minimum(0.25 dB)attenuation possible");
+        return;
+    }
+    else if (attenuation > 31.99) //For some reason, it's including 31.75 even without a less than equals sign, so I 'fixed' this bug by giving it the highest threshold that won't trigger an illegal value
+    {
+        Serial.println("ERROR: input exceeded the maximum(31.75 dB)attenuation possible");
         return;
     }
     else if (floor(attenuation*4) ==! attenuation*4)
     {
-        Serial.println("error, acceptable attenuation inputs must be multiples of 0.25");
+        Serial.println("ERROR: acceptable attenuation inputs must be multiples of 0.25");
         return;
     }
         
@@ -30,7 +35,6 @@ void PE43705::set_attenuation(uint8_t channel, double attenuation)
         PE43705::ltog(I_CHANNEL, attenbyte_I);
         //passes binary attenuation word to the register
         PE43705::writereg(I_CHANNEL, attenbyte_I);
-        Serial.println("I_CHANNEL Attenuation set");
     }
     else if (channel == Q_CHANNEL)
     {
@@ -38,7 +42,6 @@ void PE43705::set_attenuation(uint8_t channel, double attenuation)
         uint8_t attenbyte_Q(attenuation*4);
         PE43705::ltog(Q_CHANNEL, attenbyte_Q);
         PE43705::writereg(Q_CHANNEL, attenbyte_Q);
-        Serial.println("Q_CHANNEL Attenuation set");
     }
 
 }
@@ -46,17 +49,18 @@ void PE43705::set_attenuation(uint8_t channel, double attenuation)
 
 
 
-double PE43705::get_attenuation(uint8_t channel)
+void PE43705::get_attenuation(uint8_t channel)
 {
     if(channel == I_CHANNEL)    
     {
-        if (attenbyte_I ==! 0)
+        if (attenbyte_I > 0)
         {
             int atten_I = attenbyte_I; //typecasts the byte to an int
-            Serial.print("Attenuation: ");
+            Serial.print("Channel I Attenuation: ");
             Serial.print(atten_I/4.0 ); //divides the integer value by 4 to get the original attenuation back in dB
             Serial.print(" dB"); 
-            return atten_I/4.0; //returns the value of the attenuation
+            Serial.println("");
+            return;
         }
         else
         {
@@ -66,14 +70,15 @@ double PE43705::get_attenuation(uint8_t channel)
     }
     else if (channel == Q_CHANNEL)
     {    
-        if (attenbyte_Q ==! 0)
+        if (attenbyte_Q > 0)
         {
             //Q-channel comments are identical to I-Channel above
             int atten_Q = attenbyte_Q;
-            Serial.print("Attenuation: ");
+            Serial.print("Channel Q Attenuation: ");
             Serial.print(atten_Q/4.0 ); 
             Serial.print(" dB"); 
-            return atten_Q/4.0;
+            Serial.println("");
+            return;
         }
         else
         {
@@ -119,17 +124,25 @@ void PE43705::enable_defaults(uint8_t channel)
 ////writes the attenuation word to the register at the correct address
 void PE43705::writereg(uint8_t channel, uint8_t attenbyte)
 {
-    if (channel ==! I_CHANNEL || Q_CHANNEL)
+    if (channel == I_CHANNEL)
     {
-        Serial.println("Channel called in writereg function does not exist");
+      Serial.println("I_CHANNEL Attenuation set");
+    }
+    else if (channel == Q_CHANNEL)
+    {
+      Serial.println("Q_CHANNEL Attenuation set");
+    }
+    else
+    {
+        Serial.println("ERROR: Channel called in writereg function does not exist");
         return;
     }
     
-    
-    uint16_t atten_word; //defines the 16 bit attenuation word
-    atten_word = (uint16_t)channel; //typecasts the 8bit channel to a 16bit number, and stores it in atten_word
-    atten_word << 8; //bitshifts the channel so that the channel is the leftmost byte: (XXXX XXXX) 0000 0000
-    atten_word = atten_word | (uint16_t)attenbyte; //bitwise inclusive OR to add the typecasted attenuation byte to the bitshifted channel to obtain the final 16 bit attenuation word
+    //parses arguments to form the attenuation word
+    uint16_t atten_word;                                            //defines the 16 bit attenuation word
+    atten_word = (uint16_t)channel;                                 //typecasts the 8bit channel to a 16bit number, and stores it in atten_word
+    atten_word = atten_word << 8;                                   //bitshifts the 8bit channel so that the channel is the leftmost byte: (XXXX XXXX) 0000 0000
+    atten_word = (uint16_t)atten_word | (uint16_t)attenbyte;        //bitwise inclusive OR to add the typecasted attenuation byte to the bitshifted channel to obtain the final 16 bit attenuation word
 
 
     //Transfer attenuation word to register
@@ -142,8 +155,7 @@ void PE43705::writereg(uint8_t channel, uint8_t attenbyte)
         digitalWrite(LE,LOW);
     }
     digitalWrite(LE, HIGH);
-    
-    
+   
 }
 
 //alters the scope of the variable from local to class(global) for passing attenuation values from one function to the next
@@ -163,4 +175,3 @@ void PE43705::ltog(uint8_t channel, uint8_t &attenuation_byte)
         return;
     }
 }
-
