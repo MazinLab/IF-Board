@@ -82,20 +82,37 @@ void TRF3765::get_lo()
 
 }
 
-//applies hardcoded defaults, clears eeprom settings
+//Clears eeprom settings
 void TRF3765::reset()
 {
-    // :(
+    EEPROM.update(EEPROM_ENABLE_ATTEN_Q_ADDRESS,0);
+    EEPROM.update(EEPROM_LO_DEFAULT_FREQ_ADDRESS,0);
+    Serial.println("LO EEPROM settings have been reset.");
 }
 
-//load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
+//store defaults: Current settings will be stored. Hard coded defaults will be stored if current seetings haven't been set.
+void TRF3765::store_defaults()
+{
+    
+}
+
+//load defaults: Stored settings will be applied else hard coded defaults will be applied
 void TRF3765::load_defaults()
 {
-//no clue how to do this without taking up large chunks of memory; focus on learning register stuff first
+    
 }
 
-//enable defaults: If enabled, stored settings will be applied at power up
-void TRF3765::enable_defaults()
+//enable defaults: If enabled, stored settings will be applied at power up. If disabled, stored settings will not be applied at power up.
+void TRF3765::toggle_defaults()
 {
-//no clue how to do this, focus on learning register stuff first
+    if (EEPROM.read(EEPROM_ENABLE_LO_ADDRESS)==1)
+    {
+        EEPROM.write(EEPROM_ENABLE_LO_ADDRESS,0);
+        Serial.println("LO Defaults are now disabled.");
+    }
+    else
+    {
+        EEPROM.write(EEPROM_ENABLE_LO_ADDRESS,1);
+        Serial.println("LO Defaults are now enabled.");
+    }
 }

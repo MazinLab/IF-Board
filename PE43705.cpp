@@ -94,31 +94,105 @@ void PE43705::get_attenuation(uint8_t channel)
 
 }
 
-//applies defaults, clears eeprom
+//clears eeprom settings
 void PE43705::reset(uint8_t channel)
 {
-    //clear eeprom
-
-    set_attenuation(channel, DEFAULT_ATTENUATION);
-}
-
-//load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
-void PE43705::load_defaults(uint8_t channel)
-{
-
-}
-
-//enable defaults: If enabled, stored settings will be applied at power up
-void PE43705::enable_defaults(uint8_t channel)
-{
-    /*if (enable == true)
+    if (channel == I_CHANNEL)
     {
-        load_defaults(channel); //if defaults are enabled, load defaults
+        EEPROM.update(EEPROM_ENABLE_ATTEN_I_ADDRESS,0);
+        EEPROM.update(EEPROM_I_DEFAULT_ATTEN_ADDRESS,0);
+        Serial.println("I Channel EEPROM settings reset.");
+    }
+    else if (channel == Q_CHANNEL)
+    {
+        EEPROM.update(EEPROM_ENABLE_ATTEN_Q_ADDRESS,0);
+        EEPROM.update(EEPROM_Q_DEFAULT_ATTEN_ADDRESS,0);
+        Serial.println("Q Channel EEPROM settings reset.");
     }
     else
     {
-        return; //if defaults are not enabled, don't do anything
-    }*/
+        Serial.println("ERROR: Invalid channel passed in EEPROM Reset function");
+    }
+}
+
+//store defaults: Current settings will be stored. Hard coded defaults will be stored if current seetings haven't been set.
+void PE43705::store_defaults()
+{
+    if (attenbyte_I > 0)
+    {
+        EEPROM.update(EEPROM_I_DEFAULT_ATTEN_ADDRESS, attenbyte_I);
+    }
+    else
+    {
+        EEPROM.update(EEPROM_I_DEFAULT_ATTEN_ADDRESS, DEFAULT_ATTENUATION);
+    }
+
+    if (attenbyte_Q > 0)
+    {
+        EEPROM.update(EEPROM_Q_DEFAULT_ATTEN_ADDRESS, attenbyte_Q);
+    }
+    else
+    {
+        EEPROM.update(EEPROM_Q_DEFAULT_ATTEN_ADDRESS, DEFAULT_ATTENUATION);
+    }
+}
+
+//load defaults: Stored settings will be applied else hard coded defaults will be applied
+void PE43705::load_defaults(uint8_t channel)
+{
+    if (channel == I_CHANNEL)
+    {
+        if ( (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) >= 1) || (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) <= 127) )
+        {
+            set_attenuation(I_CHANNEL,EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS)/4.0);
+        }
+    }
+    else if (channel == Q_CHANNEL)
+    {
+        if ( (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) >= 1) || (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) <= 127) )
+        {
+            set_attenuation(Q_CHANNEL,EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS)/4.0);
+        }
+    }
+    else
+    {
+        Serial.println("ERROR: Invalid channel called in load_defaults function");
+    }
+}
+
+//enable defaults: If enabled, stored settings will be applied at power up. If disabled, stored settings will not be applied at power up.
+void PE43705::toggle_defaults(uint8_t channel)
+{
+    if (channel == I_CHANNEL)
+    {
+        if (EEPROM.read(EEPROM_ENABLE_ATTEN_I_ADDRESS)==1)
+        {
+            EEPROM.write(EEPROM_ENABLE_ATTEN_I_ADDRESS,0);
+            Serial.println("I Channel Attenuator Defaults are now disabled.");
+        }
+        else
+        {
+            EEPROM.write(EEPROM_ENABLE_ATTEN_I_ADDRESS,1);
+            Serial.println("I Channel Attenuator Defaults are now enabled.");
+        }
+    }
+    else if (channel == Q_CHANNEL)
+    {
+        if (EEPROM.read(EEPROM_ENABLE_ATTEN_Q_ADDRESS)==1)
+        {
+            EEPROM.write(EEPROM_ENABLE_ATTEN_Q_ADDRESS,0);
+            Serial.println("Q Channel Attenuator Defaults are now disabled.");
+        }
+        else
+        {
+            EEPROM.write(EEPROM_ENABLE_ATTEN_Q_ADDRESS,1);
+            Serial.println("Q Channel Atteunuator Defaults are now enabled.");
+        }
+    }
+    else 
+    {
+        Serial.println("ERROR: Channel called in toggle_defaults function is invalid.");
+    }
 }
 
 ////writes the attenuation word to the register at the correct address

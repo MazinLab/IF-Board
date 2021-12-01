@@ -9,7 +9,7 @@
 //inheriting from IC in case there are commonalities to be added at a later date(ie: never)
 class TRF3765 : public IC
 {
-    public:
+    public:        
         /*----------------------------
         Low Level Methods for TRF3765
         -----------------------------*/
@@ -31,14 +31,17 @@ class TRF3765 : public IC
        //Gets Local Oscillator(LO) value
        void get_lo ();
 
-       //applies hard coded defaults, resets eeprom
+       //clears EEPROM Settings
        void reset();
 
-       //load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
+       //store defaults: Current settings will be stored. Hard coded defaults will be stored if current seetings haven't been set.
+       void store_defaults();
+
+       //load defaults: Stored settings will be applied else hard coded defaults will be applied
        void load_defaults();
 
-       //enable defaults: If enabled, stored settings will be applied at power up
-       void enable_defaults();
+       //enable defaults: If enabled, stored settings will be applied at power up. If disabled, stored settings will not be applied at power up.
+       void toggle_defaults();
 };
 
 

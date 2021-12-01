@@ -36,14 +36,17 @@ class PE43705 : public IC
         High Level Methods for PE43705
         -----------------------------*/
         
-        //Applies hard coded defaults, clears eeprom 
+        //clears eeprom settings
         void reset(uint8_t channel);
 
-        //load defaults: Stored settings will be applied else hard coded defaults will be applied and stored
+        //store defaults: Current settings will be stored. Hard coded defaults will be stored if current seetings haven't been set.
+        void store_defaults();
+
+        //load defaults: Stored settings will be applied else hard coded defaults will be applied
         void load_defaults(uint8_t channel);
 
-        //enable defaults: If enabled, stored settings will be applied at power up
-        void enable_defaults(uint8_t channel);
+        //enable defaults: If enabled, stored settings will be applied at power up. If disabled, stored settings will be applied at power up. 
+        void toggle_defaults(uint8_t channel);
         
         //set the attenuation of the chip
         void set_attenuation(uint8_t channel, double attenuation);

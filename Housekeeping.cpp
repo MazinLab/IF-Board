@@ -81,35 +81,43 @@ bool print_commands()
     Serial.println("");
     Serial.println("HOUSEKEEPING COMMANDS:");
     Serial.println("#print_commands - Prints this list of commands.");
-    Serial.println("#enable_defaults - If enabled, stored settings will be applied at power up.");
-    Serial.println("#load_defaults - Stored settings will be applied else hard coded defaults will be applied and stored.");
+    Serial.println("#store_defaults - Current settings will be stored. Hard coded defaults will be stored if current seetings haven't been set.");
+    Serial.println("#toggle_defaults - If enabled, stored settings will be applied at power up. If disabled, stored settings will not be applied at power up.");
+    Serial.println("#load_defaults - Stored settings will be applied else hard coded defaults will be applied.");
     Serial.println("#tell_status - Report all info.");
-    Serial.println("#reset - Clear all data and reset eprom settings.");
+    Serial.println("#reset - Resets EEPROM settings.");
     Serial.println("#temperature - Return the temperature sensor reading.");
     Serial.println("Note: Valid device names are 'LO', 'ATTEN_I', 'ATTEN_Q', and 'ALL'.");
 
     return true;
 }
 
-bool enable_defaults(String &device)
+bool store_defaults()
+{
+    oscillator.store_defaults();
+    attenuator.store_defaults();
+    Serial.println("Current settings stored.");
+}
+
+bool toggle_defaults(String &device)
 {
     if (device == "LO")
     {
-        oscillator.enable_defaults();
+        oscillator.toggle_defaults();
     }
     else if (device == "ATTEN_I")
     {
-        attenuator.enable_defaults(I_CHANNEL);
+        attenuator.toggle_defaults(I_CHANNEL);
     }
     else if (device == "ATTEN_Q")
     {
-        attenuator.enable_defaults(Q_CHANNEL);
+        attenuator.toggle_defaults(Q_CHANNEL);
     }
     else if (device == "ALL")
     {
-        oscillator.enable_defaults();
-        attenuator.enable_defaults(I_CHANNEL);
-        attenuator.enable_defaults(Q_CHANNEL);
+        oscillator.toggle_defaults();
+        attenuator.toggle_defaults(I_CHANNEL);
+        attenuator.toggle_defaults(Q_CHANNEL);
     }
     else
     {
@@ -149,7 +157,67 @@ bool load_defaults(String &device)
 
 bool tell_status()
 {
-    //need to tell eeprom status commands? (implement this later)
+    //Channel I attenuator EEPROM default status
+    if ( (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) >= 1) || (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) <= 127) )
+    {
+        Serial.println("");
+        Serial.print("I Channel Default Attention(EEPROM) set to ");
+        Serial.print(EEPROM.read(EEPROM_ENABLE_ATTEN_I_ADDRESS)/4.0);
+        Serial.print(" dB.");
+    }
+    else
+    {
+        Serial.print("I Channel Default Attenuation(EEPROM) not initialized.");
+    }
+    //Channel Q attenuator EEPROM enable status
+    if (EEPROM.read(EEPROM_ENABLE_ATTEN_I_ADDRESS)==1)
+    {
+        Serial.println("I Channel defaults are enabled at power up.");
+    }
+    else
+    {
+        Serial.println("I Channel defaults are not enabled at power up.");
+    }
+
+    //Channel Q attenuator EEPROM default status
+    if ( (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) >= 1) || (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) <= 127) )
+    {
+        Serial.println("");
+        Serial.print("Q Channel Default Attenuation(EEPROM) set to ");
+        Serial.print(EEPROM.read(EEPROM_ENABLE_ATTEN_Q_ADDRESS)/4.0);
+        Serial.print(" dB.");
+    }
+    else
+    {
+        Serial.print("Q Channel Default Attenuation(EEPROM) not initialized.");
+    }
+    //Channel Q attenuator EEPROM enable status
+    if (EEPROM.read(EEPROM_ENABLE_ATTEN_Q_ADDRESS)==1)
+    {
+        Serial.println("Q Channel defaults are enabled at power up.");
+    }
+    else
+    {
+        Serial.println("Q Channel defaults are not enabled at power up.");
+    }
+    
+    //LO EEPROM default status
+    Serial.println("");
+    Serial.print("LO Default Frequency(EEPROM) set to ");
+    Serial.print(EEPROM.read(EEPROM_LO_DEFAULT_FREQ_ADDRESS));
+    Serial.print(" Hz.");
+    //LO EEPROM enable status
+    if (EEPROM.read(EEPROM_ENABLE_LO_ADDRESS)==1)
+    {
+        Serial.println("LO defaults are enabled at power up.");
+    }
+    else
+    {
+        Serial.println("LO defaults are not enabled at power up.");
+    }
+
+
+    //RAM settings status
     oscillator.get_lo(); 
     attenuator.get_attenuation(I_CHANNEL);
     attenuator.get_attenuation(Q_CHANNEL);
@@ -172,9 +240,12 @@ bool reset(String &device)
     }
     else if (device == "ALL")
     {
-        oscillator.reset();
-        attenuator.reset(I_CHANNEL);
-        attenuator.reset(Q_CHANNEL);
+        //initializes and clears the entire EEPROM
+        for (int adr = 0; adr < EEPROM.length(); adr ++)
+        {
+            EEPROM.update(adr,0);
+        }
+        Serial.println("All EEPROM settings cleared.");
     }
     else
     {
@@ -236,8 +307,15 @@ void interpret_command(String &command)
         Serial.println("");
     }
 
+    //store_defaults structure
+    else if (command == "store_defaults")
+    {
+        store_defaults();
+        Serial.println();
+    }
+
     //enable_defaults structure
-    else if (command == "enable_defaults")
+    else if (command == "toggle_defaults")
     {
         Serial.print("Input a device: ");
         while (Serial.available() == 0) {}
@@ -245,7 +323,7 @@ void interpret_command(String &command)
         Serial.print(device);
         Serial.println("");
         
-        enable_defaults(device);
+        toggle_defaults(device);
         Serial.println("");
     }
 
