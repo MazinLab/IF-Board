@@ -97,6 +97,8 @@ bool store_defaults()
     oscillator.store_defaults();
     attenuator.store_defaults();
     Serial.println("Current settings stored.");
+    
+    return true;
 }
 
 bool toggle_defaults(String &device)
@@ -158,18 +160,18 @@ bool load_defaults(String &device)
 bool tell_status()
 {
     //Channel I attenuator EEPROM default status
-    if ( (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) >= 1) || (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) <= 127) )
+    if ( (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) >= 1) && (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) <= 127) )
     {
         Serial.println("");
         Serial.print("I Channel Default Attention(EEPROM) set to ");
         Serial.print(EEPROM.read(EEPROM_ENABLE_ATTEN_I_ADDRESS)/4.0);
-        Serial.print(" dB.");
+        Serial.print(" dB. ");
     }
     else
     {
-        Serial.print("I Channel Default Attenuation(EEPROM) not initialized.");
+        Serial.println("I Channel Default Attenuation(EEPROM) not initialized.");
     }
-    //Channel Q attenuator EEPROM enable status
+    //Channel I attenuator EEPROM enable status
     if (EEPROM.read(EEPROM_ENABLE_ATTEN_I_ADDRESS)==1)
     {
         Serial.println("I Channel defaults are enabled at power up.");
@@ -180,16 +182,16 @@ bool tell_status()
     }
 
     //Channel Q attenuator EEPROM default status
-    if ( (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) >= 1) || (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) <= 127) )
+    if ( (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) >= 1) && (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) <= 127) )
     {
         Serial.println("");
         Serial.print("Q Channel Default Attenuation(EEPROM) set to ");
         Serial.print(EEPROM.read(EEPROM_ENABLE_ATTEN_Q_ADDRESS)/4.0);
-        Serial.print(" dB.");
+        Serial.print(" dB. ");
     }
     else
     {
-        Serial.print("Q Channel Default Attenuation(EEPROM) not initialized.");
+        Serial.println("Q Channel Default Attenuation(EEPROM) not initialized.");
     }
     //Channel Q attenuator EEPROM enable status
     if (EEPROM.read(EEPROM_ENABLE_ATTEN_Q_ADDRESS)==1)
@@ -205,7 +207,7 @@ bool tell_status()
     Serial.println("");
     Serial.print("LO Default Frequency(EEPROM) set to ");
     Serial.print(EEPROM.read(EEPROM_LO_DEFAULT_FREQ_ADDRESS));
-    Serial.print(" Hz.");
+    Serial.print(" Hz. ");
     //LO EEPROM enable status
     if (EEPROM.read(EEPROM_ENABLE_LO_ADDRESS)==1)
     {

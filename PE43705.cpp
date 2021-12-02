@@ -115,7 +115,7 @@ void PE43705::reset(uint8_t channel)
     }
 }
 
-//store defaults: Current settings will be stored. Hard coded defaults will be stored if current seetings haven't been set.
+//store defaults: Current settings will be stored. Hard coded defaults will be stored if current setings haven't been set.
 void PE43705::store_defaults()
 {
     if (attenbyte_I > 0)
@@ -142,16 +142,24 @@ void PE43705::load_defaults(uint8_t channel)
 {
     if (channel == I_CHANNEL)
     {
-        if ( (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) >= 1) || (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) <= 127) )
+        if ( (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) >= 1) && (EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS) <= 127) )
         {
             set_attenuation(I_CHANNEL,EEPROM.read(EEPROM_I_DEFAULT_ATTEN_ADDRESS)/4.0);
+        }
+        else
+        {
+            return;
         }
     }
     else if (channel == Q_CHANNEL)
     {
-        if ( (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) >= 1) || (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) <= 127) )
+        if ( (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) >= 1) && (EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS) <= 127) )
         {
             set_attenuation(Q_CHANNEL,EEPROM.read(EEPROM_Q_DEFAULT_ATTEN_ADDRESS)/4.0);
+        }
+        else 
+        {
+            return;
         }
     }
     else
