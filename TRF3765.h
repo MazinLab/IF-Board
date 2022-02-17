@@ -5,6 +5,8 @@
 
 
 #define TRF_SPI_FREQ 1000000
+#define DEFAULT_FREF 40 //MHz
+#define LOCK_TIME_US 1000
 
 #define XSP_REG0_WRITE      0x80000028  /* Test register write value */
 #define XSP_REG1_WRITE      0x68300149  /* Test register write value */
@@ -24,8 +26,11 @@ class TRF3765 {
       regmap_t _rm;
       uint32_t _request(uint32_t x);
       void _send(uint32_t x);
+      double fref;  //MHZ
 
     public:
+      //bool isfractional(); r4.en_frac
+      TRF3765();
       regmap_t get_config();
       void tell_reg(genericreg_t r);
       void tell_regmap(regmap_t rm);
@@ -39,7 +44,14 @@ class TRF3765 {
       void tell_rX(uint8_t x, uint32_t val);
       bool locked();
 
-      bool set_freq(double frequency, bool fractional);
+
+      double TRF3765::f_PFD(regmap_t rm);
+      double TRF3765::cal_clock(regmap_t rm);
+      double TRF3765::f_RFSTEP(regmap_t rm);
+      double TRF3765::f_NMAX(double freq, regmap_t rm);
+      void self_test(double freq, bool fractional);
+      bool set_fref(double frequency);
+      bool set_freq(double frequency, bool fractional, bool calibrate, bool gen2);
       double get_freq();
       void tell_status();
       uint32_t get_register(uint8_t id);

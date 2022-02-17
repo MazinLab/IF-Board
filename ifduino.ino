@@ -40,6 +40,8 @@ typedef struct eeprom_version_t {
 typedef struct eeprom_data_t {
   double lo;
   bool fractional;
+  bool gen2;
+  bool calibrate;
   regmap_t lo_config;
   attens_t attens;
 } eeprom_data_t;
@@ -49,7 +51,7 @@ eeprom_data_t config;
 
 
 #pragma mark Commands
-#define N_COMMANDS 10
+#define N_COMMANDS 14
 bool PCcommand();
 bool PVcommand();
 bool ATcommand();
@@ -60,6 +62,10 @@ bool ZBcommand();
 bool IOcommand();
 bool WRcommand();
 bool RRcommand();
+bool FRcommand();
+bool G2command();
+bool CAcommand();
+bool STcommand();
 
 typedef struct {
     String name;
@@ -88,7 +94,15 @@ Command commands[N_COMMANDS]={
     //Write an LO Reg CAUTION!
     {"WR", WRcommand, false},
     //Read LO Regs
-    {"RR", RRcommand, false}
+    {"RR", RRcommand, false},
+    //set fref MHz
+    {"FR", FRcommand, true},
+    //toggle between gen2/3 setup mode
+    {"G2", G2command, true},
+    //toggle calibration in gen3 setup mode
+    {"CA", CAcommand, true},
+    //run self-test
+    {"ST", STcommand, true}
 };
 
 
@@ -200,18 +214,9 @@ void setup() {
     digitalWrite(PIN_LOCKED, LOW); //?
     digitalWrite(PIN_ONOFF,  LOW);
 
-
-
-//    Serial.println("Hello");
-//    //Restore the config from EEPROM
-//    delay(1000);
-//    for (int i=0;i<5;i++){
-//    digitalWrite(PIN_ONOFF, LOW);
-//    delay(150);
-//        digitalWrite(PIN_ONOFF, HIGH);
-//            delay(150);}
-    config.lo=6;
+    config.lo=6000.0;
     config.fractional=true;
+    config.gen2=true;
     loadEEPROM();
 
     //Boot info
@@ -381,7 +386,7 @@ void powerUp() {
   attenuator.set_atten(DAC2, config.attens.dac2);
   attenuator.set_atten(ADC1, config.attens.adc1);
   attenuator.set_atten(ADC2, config.attens.adc2);
-  lo.set_freq(config.lo, config.fractional);
+  lo.set_freq(config.lo, config.fractional, config.calibrate, config.gen2);
   config.lo = lo.get_freq();
 }
 
@@ -480,7 +485,7 @@ bool LOcommand() {
 
   double freq;
   freq = atof(instruction.arg_buffer);
-  if (!lo.set_freq(freq, config.fractional)) 
+  if (!lo.set_freq(freq, config.fractional, config.calibrate, config.gen2)) 
     return false;
   config.lo = lo.get_freq();
   config.lo_config = lo.get_config();
@@ -519,4 +524,37 @@ bool RRcommand() {
   
   val=lo.get_register(reg);
   Serial.print("0x");Serial.println(val, HEX);
+}
+
+
+bool FRcommand() {
+  if (instruction.arg_len<1) return false;
+//  if (instruction.arg_buffer[0] == '?') {
+//    cout<<lo.get_freq()<<endl;
+//    return true;
+//  }
+
+  double freq;
+  freq = atof(instruction.arg_buffer);
+  if (!lo.set_fref(freq)) 
+    return false;
+  config.lo = lo.get_freq();
+  config.lo_config = lo.get_config();
+  return true;
+}
+
+bool G2command() {
+  config.gen2=!config.gen2;
+  return true;
+}
+
+bool CAcommand() {
+  config.calibrate=!config.calibrate;
+  return true;
+}
+
+
+bool STcommand() {
+  lo.self_test(config.lo, config.fractional);
+  return true;
 }

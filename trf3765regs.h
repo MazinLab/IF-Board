@@ -45,8 +45,8 @@ typedef struct r1fields_t {
 
 typedef struct r2fields_t {
     uint8_t :5;
-    uint16_t ndiv:16;
-    uint8_t pll_div:2;  //div value = 2**pll_div valid values 0,1,2
+    uint16_t nint:16;
+    uint8_t pll_div_sel:2;  //div value = 2**pll_div valid values 0,1,2
     bool prescale_sel:1;
     uint8_t :2;
     uint8_t vco_sel:2;
