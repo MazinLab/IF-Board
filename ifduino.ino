@@ -8,7 +8,7 @@
 
 //#define DEBUG_EEPROM
 //#define DEBUG_RUN_TIME
-#define DEBUG_COMMAND
+//#define DEBUG_COMMAND
 
 #define POWERUP_TIME_MS 100
 #define VERSION_STRING "IFShield v0.5"
@@ -217,6 +217,7 @@ void setup() {
     config.lo=6000.0;
     config.fractional=true;
     config.gen2=true;
+    config.calibrate=true;
     loadEEPROM();
 
     //Boot info
@@ -431,7 +432,7 @@ bool ATcommand() {
 
   if (instruction.arg_buffer[0]=='?') {
       cout<<"{adc1:"<<attenuator.get_atten(ADC1)<<", adc2:"<<attenuator.get_atten(ADC1);
-      cout<<"{dac1:"<<attenuator.get_atten(DAC1)<<", dac2:"<<attenuator.get_atten(DAC2)<<"}"<<endl;
+      cout<<" dac1:"<<attenuator.get_atten(DAC1)<<", dac2:"<<attenuator.get_atten(DAC2)<<"}"<<endl;
       return true;
   }
 

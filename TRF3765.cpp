@@ -3,9 +3,9 @@
 #include "pins.h"
 //Gets contents of register address
 
-uint64_t rise=0;
+uint32_t rise=0;
 void _lockISR() {
-  rise=(PORTB & 0b10000)>0 ? micros():0;
+  rise=(PORTB & 0b10000)>0 ? millis():0;
 }
 
 TRF3765::TRF3765() {
@@ -28,12 +28,6 @@ uint32_t TRF3765::get_register(uint8_t address) {
 
 void TRF3765::tell_rX(uint8_t x, uint32_t val){
   genericreg_t r={.raw=val};
-//  reg4_t r4={.raw=val};
-//tell_r4(r4);
-//
-//  tell_r4(*((reg4_t*)&r));
-//
-//  tell_r4(r4);
   switch (x) {
     case 0:
       tell_r0(*((reg0_t*)&r));
@@ -108,10 +102,10 @@ void TRF3765::_send(uint32_t x) {
 
 
 bool TRF3765::locked() {
-//  return (micros()-rise > LOCK_TIME_US);
+//  return (millis()-rise > LOCK_TIME_MS);
 
-  uint32_t tic=micros();
-  while (micros()-tic < LOCK_TIME_US) 
+  uint32_t tic=millis();
+  while (millis()-tic < LOCK_TIME_MS) 
     if (!digitalRead(PIN_LOCKED))
       return false;
   return true;
@@ -140,11 +134,11 @@ void TRF3765::self_test(double freq, bool fractional) {
       reg0_t rbreq=RB_REQUEST(0);
       rbreq.rb_mode.count_mode_mux_sel=j;
       rbreq.raw = _request(rbreq.raw);
-      if (j) Serial.print("Max:"); 
-      else Serial.print("Min:"); 
-      Serial.print(" sat_err="); 
+      if (j) Serial.print(F(" Max:")); 
+      else Serial.print(F(" Min:")); 
+      Serial.print(F(" sat_err=")); 
       Serial.print(rbreq.field.r_sat_err);
-      Serial.print(" count=");Serial.println(rbreq.tst_mode.count);
+      Serial.print(F(" count="));Serial.println(rbreq.tst_mode.count);
     }
   }
 
@@ -158,10 +152,10 @@ void TRF3765::self_test(double freq, bool fractional) {
   reg0_t rbreq=RB_REQUEST(0);
   rbreq.raw = _request(rbreq.raw);
   
-  Serial.print("Calibration\n sat_err="); 
+  Serial.print(F("Calibration\n sat_err=")); 
   Serial.print(rbreq.field.r_sat_err);
-  Serial.print(rbreq.field.vco_trim);
-  Serial.print(rbreq.field.vco_sel);
+  Serial.print(F(" vco_trim="));Serial.print((uint16_t) rbreq.field.vco_trim);
+  Serial.print(F("\n vco_sel="));Serial.println((uint16_t) rbreq.field.vco_sel);
 
   
 }
@@ -178,10 +172,39 @@ inline double TRF3765::cal_clock(regmap_t rm) {
     return f_pfd*(1<<(7-rm.regs.r1.field.cal_clk_sel));
 }
 
+inline uint8_t factor_2_cal_clk_sel(float factor){
+  uint8_t ret=0, f=0, v=0, n=0;
+  bool lt1=false;
+  if (factor<=1) {
+    lt1=true;
+    factor=1/factor;
+    ret|=0b1000;
+  }
+  f = round(factor);
+  v=f;
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v++; // next power of 22
+  v=(v - f) > (f - (v >> 1)) ? (v >> 1) : v;
+  f=v;
+  while (v >>= 1) ++n;
+  if (lt1) ret|=n;
+  else ret|=7-n;  
+
+  Serial.print("Cal Clock factor:");
+  if (lt1) Serial.print("1/");
+  Serial.print(factor);Serial.print(" (");
+  Serial.print(f);Serial.print(", ");Serial.print(n);Serial.print(")=0b");Serial.println(ret&0b1111, BIN);
+  return ret;
+}
+
+
 inline double TRF3765::f_RFSTEP(regmap_t rm) {
   double step=f_PFD(rm)*(1<<rm.regs.r2.field.pll_div_sel)/(double) (1<<rm.regs.r6.field.lo_div_sel);
   if (rm.regs.r4.field.en_frac) 
-    step/=(1<<25);
+    step/=((uint32_t)1)<<25;
   return step;
 }
 
@@ -287,6 +310,8 @@ bool TRF3765::set_freq(double freq, bool fractional, bool calibrate, bool gen2) 
     fail=gen2;
   }
 
+//  Serial.println("GEN2REGS");
+//  tell_status(rm);
 
   // GEN3 -------
   rm_g3=rm;
@@ -299,7 +324,7 @@ bool TRF3765::set_freq(double freq, bool fractional, bool calibrate, bool gen2) 
   //prscSel==0 ? 4/5ths : 8/9ths
   prscSel = ((uint16_t) frac_tmp)>=(fractional ? 75:72);   // 72 in integer mode, 75 in frac
 
-  if (nInt<(fractional ? 23:20)) {
+  if (((uint16_t)frac_tmp)<(fractional ? 23:20)) {
     Serial.println(F("nint too low, see pg26 (g3)!"));
     fail=!gen2;
   }
@@ -319,19 +344,19 @@ bool TRF3765::set_freq(double freq, bool fractional, bool calibrate, bool gen2) 
   //per p31
   */
   //must write reg2 last as it kicks off the calibration when en_cal is true
-  rm_g3.regs.r1.field.cal_clk_sel=0b1000; //the default, no scaling=FREF/rdiv
+  rm_g3.regs.r1.field.cal_clk_sel=factor_2_cal_clk_sel(.3/f_PFD(rm_g3)); //default=0b1000, no scaling=FREF/rdiv
   rm_g3.regs.r2.field.en_cal=true;
   rm_g3.regs.r2.field.cal_acc=0;
   rm_g3.regs.r6.field.cal_bypass=false;
   rm_g3.regs.r2.field.vco_sel_mode=!calibrate;
   rm_g3.regs.r2.field.vco_sel=3; //highest freq vco 
   
-  if(.05 < cal_clock(rm) <=.6) {
+  if(.05 > cal_clock(rm) || cal_clock(rm) > .6) {
     Serial.println(F("Slow cal_clock by increasing rdiv, CAL_CLK_SEL, or lowering fref (g2)"));
     fail = gen2;
   }
 
-  if(.05 < cal_clock(rm_g3) <=.6) {
+  if(.05 > cal_clock(rm_g3) || cal_clock(rm_g3) > .6) {
     Serial.println(("Slow cal clock by increasing rdiv, CAL_CLK_SEL, or lowering fref (g3)"));
     fail = !gen2;
   }
@@ -368,8 +393,9 @@ bool TRF3765::set_freq(double freq, bool fractional, bool calibrate, bool gen2) 
 
 
   if (gen2) {
-    
-    reset(fractional);
+    Serial.print(F("Gen2"));
+    if (fractional) Serial.println(F(" fractional mode")); 
+//    reset(fractional);
     if (fractional) {
       rm.regs.r4=(reg4_t)REG_FROM_RAW(4,XSP_REG4_WRITE_FRAC);
       rm.regs.r5=(reg5_t)REG_FROM_RAW(5,XSP_REG5_WRITE_FRAC);
@@ -380,33 +406,45 @@ bool TRF3765::set_freq(double freq, bool fractional, bool calibrate, bool gen2) 
       rm.regs.r2=(reg2_t)REG_FROM_RAW(2,XSP_REG2_WRITE_ENC);
     }
   } else {
+    Serial.print(F("Gen3"));
+    if (calibrate) Serial.print(F(" calibrate"));
+    if (fractional) Serial.println(F(" fractional mode")); 
     rm=rm_g3;
   }
   
-  tell_regmap(rm);
+  
+  tell_status(rm);
   //Note that gen2 wrote XSP_REG0_WRITE before these writes
-  _send(rm.regs.r1.raw);
-  _send(rm.regs.r3.raw);
-  _send(rm.regs.r4.raw);
-  _send(rm.regs.r5.raw);
-  _send(rm.regs.r6.raw);
-  _send(rm.regs.r2.raw);
+  if (!fail) {
+    _send(rm.regs.r1.raw);
+    _send(rm.regs.r3.raw);
+    _send(rm.regs.r4.raw);
+    _send(rm.regs.r5.raw);
+    _send(rm.regs.r6.raw);
+    _send(rm.regs.r2.raw);
+    _rm=rm;
+  }
   return true;
 }
 
 //Gets LO value
 double TRF3765::get_freq() {
   //must have current regmap at _rm
+  return get_freq(_rm);
+}
+
+double TRF3765::get_freq(regmap_t rm) { 
+
   //F_PFD = fref/rm.regs.r1.field.rdiv;
   //F_PFD //phase frequnecy detector frequency
   double fvco;
-  double pll_divider = (1<<_rm.regs.r2.field.pll_div_sel);
-  if (_rm.regs.r4.field.en_frac) {
-    fvco = fref*pll_divider*((double)_rm.regs.r2.field.nint+(double)_rm.regs.r3.field.nfrac/(double)(1<<25))/(double)_rm.regs.r1.field.rdiv;
+  double pll_divider = (1<<rm.regs.r2.field.pll_div_sel);
+  if (rm.regs.r4.field.en_frac) {
+    fvco = fref*pll_divider*((double)rm.regs.r2.field.nint+(double)rm.regs.r3.field.nfrac/(double)(((uint32_t) 1)<<25))/(double)rm.regs.r1.field.rdiv;
   } else {
-    fvco = fref*pll_divider*(double)_rm.regs.r2.field.nint/(double)_rm.regs.r1.field.rdiv;
+    fvco = fref*pll_divider*(double)rm.regs.r2.field.nint/(double)rm.regs.r1.field.rdiv;
   }
-  return 2.0*fvco/(double)(1<<_rm.regs.r6.field.lo_div_sel);
+  return 2.0*fvco/(double)(1<<rm.regs.r6.field.lo_div_sel);
 }
 
 
@@ -420,28 +458,35 @@ void TRF3765::reset(bool fractional=true) {
   init_data.regs.r6=(reg6_t) REG_FROM_RAW(6,(fractional ? XSP_REG6_WRITE_FRAC:XSP_REG6_WRITE));
 
   Serial.println(F("#Init registers"));
-  tell_regmap(init_data);
+  tell_status(init_data);
   
   for (int i=1;i<7;i++) _send(init_data.data[i]);
 }
 
 void TRF3765::tell_status() {
-
   for (int i=0;i<7;i++)
     _rm.data[i]=_request(RB_REQUEST(i).raw);
-  tell_regmap(_rm);
+  tell_status(_rm);
+}
+
+
+void TRF3765::tell_status(regmap_t rm) {
+  tell_regmap(rm);
 
   Serial.print("f_REF=");Serial.print(fref);Serial.println(" MHz");
-  Serial.print("f_PFD=");Serial.print(f_PFD(_rm));Serial.println(" MHz");
-  Serial.print("f_calclock=");Serial.print(cal_clock(_rm));Serial.println(" MHz");
-  Serial.print("df_RF=");Serial.print(f_RFSTEP(_rm)*1e6);Serial.println(" Hz");
+  Serial.print("f_PFD=");Serial.print(f_PFD(rm));Serial.println(" MHz");
+  Serial.print("f_calclock=");Serial.print(cal_clock(rm));Serial.println(" MHz");
+  Serial.print("df_RF=");Serial.print(f_RFSTEP(rm)*1e6);Serial.println(" Hz");
 
-  Serial.print("LO freq: ");Serial.print(get_freq(), 3);Serial.println(" MHz?");
-  if (locked()) Serial.println(F("LO locked"));
-  else Serial.println(F("LO unlocked"));
+  Serial.print("LO freq: ");Serial.print(get_freq(rm), 3);Serial.println(" MHz");
+  if (locked()) Serial.print(F("LO locked"));
+  else Serial.print(F("LO unlocked"));
+  Serial.print("(pin=");Serial.print(digitalRead(PIN_LOCKED));
+  Serial.print(" rise=");Serial.print(rise);Serial.println(")");
 
-  Serial.print("Reg7: 0x");Serial.println(_request(RB_REQUEST(7).raw),HEX);
+//  Serial.print("Reg7: 0x");Serial.println(_request(RB_REQUEST(7).raw),HEX);
 }
+
 
 void TRF3765::tell_regmap(regmap_t rm) {
   tell_r0(rm.regs.r0);
@@ -499,7 +544,7 @@ void TRF3765::tell_r2(reg2_t r) {
   Serial.print(F("\tpll_div_sel: "));Serial.println((uint16_t) r.field.pll_div_sel);
   Serial.print(F("\tprescale_sel: "));Serial.println(r.field.prescale_sel);
   Serial.print(F("\tvco_sel: "));Serial.println((uint16_t) r.field.vco_sel);
-  Serial.print(F("\tvco_sel_mode: "));Serial.println(r.field.vco_sel_mode);
+  Serial.print(F("\tvcosel_mode: "));Serial.println(r.field.vco_sel_mode);
   Serial.print(F("\tcal_acc: "));Serial.println((uint16_t) r.field.cal_acc);
   Serial.print(F("\ten_cal: "));Serial.println(r.field.en_cal);
 }

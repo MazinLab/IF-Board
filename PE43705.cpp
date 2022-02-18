@@ -20,6 +20,7 @@ bool PE43705::set_atten(uint8_t channel, float attenuation) {
         Serial.println(F("#ERROR:  Attenuation must be between 0-31.75 dB"));
         return false;
     }
+
     _atten[channel-1] = atten;
     _send(channel, atten);
     return true;
@@ -52,9 +53,9 @@ void PE43705::_send(uint8_t channel, uint8_t attenbyte) {
 
 void PE43705::tell_status() {
 
-  Serial.print(F("RF -- "));Serial.print(_atten[ADC1]/(double) 4.0, 2);Serial.print(F(" dB -- "));
-  Serial.print(_atten[ADC2]/(double) 4.0,2);Serial.println(F(" dB -- IF"));
+  Serial.print(F("RF -- "));Serial.print(_atten[ADC1-1]/(double) 4.0, 2);Serial.print(F(" dB -- "));
+  Serial.print(_atten[ADC2-1]/(double) 4.0,2);Serial.println(F(" dB -- IF"));
 
-  Serial.print(F("IF -- "));Serial.print(_atten[DAC1]/(double) 4.0, 2);Serial.print(F(" dB -- "));
-  Serial.print(_atten[DAC2]/(double) 4.0,  2);Serial.println(F(" dB -- RF"));
+  Serial.print(F("IF -- "));Serial.print(_atten[DAC1-1]/(double) 4.0, 2);Serial.print(F(" dB -- "));
+  Serial.print(_atten[DAC2-1]/(double) 4.0,  2);Serial.println(F(" dB -- RF"));
 }
