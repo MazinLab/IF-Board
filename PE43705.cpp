@@ -1,6 +1,6 @@
 #include "PE43705.h"
 #include "pins.h"
-#include <SPI.h> 
+#include <SPI.h>
 
 PE43705::PE43705(){
   power_off();
@@ -13,11 +13,14 @@ void PE43705::power_off() {
 
 
 bool PE43705::set_atten(uint8_t channel, float attenuation) {
-    if (channel > N_ATTEN_CHAN || channel < 1) return false;
+    if (channel != ADC1 && channel != ADC2 &&
+        channel != DAC1 && channel != DAC2)
+        return false;
+
     uint8_t atten = round(attenuation*4);
 
-    if (attenuation > 127) {
-        Serial.println(F("#ERROR:  Attenuation must be between 0-31.75 dB"));
+    if (atten > 127) {
+        Serial.println(F("#ERROR: Attenuation must be between 0-31.75 dB"));
         return false;
     }
 
@@ -27,16 +30,20 @@ bool PE43705::set_atten(uint8_t channel, float attenuation) {
 }
 
 
-bool PE43705::set_attens(attens_t attens) {
+void PE43705::set_attens(attens_t attens) {
   set_atten(DAC1, attens.dac1);
   set_atten(DAC2, attens.dac2);
   set_atten(ADC1, attens.adc1);
   set_atten(ADC2, attens.adc2);
 }
 
-float PE43705::get_atten(uint8_t channel) {
-    if (channel > N_ATTEN_CHAN || channel < 1) return false;
-    return _atten[channel-1]/4.0;
+attens_t PE43705::get_attens() {
+    attens_t ret;
+    ret.dac1=_atten[DAC1-1]/4.0;
+    ret.dac2=_atten[DAC2-1]/4.0;
+    ret.adc1=_atten[ADC1-1]/4.0;
+    ret.adc2=_atten[ADC2-1]/4.0;
+    return ret;
 }
 
 
@@ -49,13 +56,4 @@ void PE43705::_send(uint8_t channel, uint8_t attenbyte) {
   SPI.transfer(atten_word);
   SPI.endTransaction();
   digitalWrite(PIN_SS, LOW);
-}
-
-void PE43705::tell_status() {
-
-  Serial.print(F("RF -- "));Serial.print(_atten[ADC1-1]/(double) 4.0, 2);Serial.print(F(" dB -- "));
-  Serial.print(_atten[ADC2-1]/(double) 4.0,2);Serial.println(F(" dB -- IF"));
-
-  Serial.print(F("IF -- "));Serial.print(_atten[DAC1-1]/(double) 4.0, 2);Serial.print(F(" dB -- "));
-  Serial.print(_atten[DAC2-1]/(double) 4.0,  2);Serial.println(F(" dB -- RF"));
 }

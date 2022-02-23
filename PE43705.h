@@ -1,12 +1,12 @@
-#ifndef __PE43705_h__ 
+#ifndef __PE43705_h__
 #define __PE43705_h__
 #include <Arduino.h>
 
 //One channel per chip
-#define ADC1 0b011  // RF2IF
-#define ADC2 0b100  // RF2IF
-#define DAC1 0b001  // IF2RFa
-#define DAC2 0b010  // IF2RFb
+#define ADC1 0b011  // RF2IF  3
+#define ADC2 0b100  // RF2IF  4
+#define DAC1 0b001  // IF2RFa  1
+#define DAC2 0b010  // IF2RFb  2
 #define N_ATTEN_CHAN 4
 
 #define PE_SPI_FREQ 1000000
@@ -26,9 +26,8 @@ class PE43705 {
     public:
         PE43705();
         void power_off();
-        void tell_status();
         bool set_atten(uint8_t channel, float attenuation);
-        bool set_attens(attens_t attens);
-        float get_atten(uint8_t channel);
+        void set_attens(attens_t attens);
+        attens_t get_attens();
 };
 #endif
