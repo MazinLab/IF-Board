@@ -51,12 +51,13 @@ eeprom_data_t config;
 
 
 #pragma mark Commands
-#define N_COMMANDS 14
+#define N_COMMANDS 16
 bool PCcommand();
 bool PVcommand();
 bool ATcommand();
 bool FMcommand();
 bool LOcommand();
+bool NFcommand();
 bool TScommand();
 bool ZBcommand();
 bool IOcommand();
@@ -65,6 +66,7 @@ bool RRcommand();
 bool FRcommand();
 bool G2command();
 bool CAcommand();
+bool SVcommand();
 bool STcommand();
 
 typedef struct command_t {
@@ -86,6 +88,7 @@ command_t commands[N_COMMANDS]={
     {"FM", FMcommand, true},
     //Set LO Frequency
     {"LO", LOcommand, true},
+    {"NF",NFcommand, false}, //nudge it
     //Tell Status
     {"TS", TScommand, true},
     //Zero the boot and reset
@@ -98,6 +101,8 @@ command_t commands[N_COMMANDS]={
     {"RR", RRcommand, false},
     //set fref MHz
     {"FR", FRcommand, true},
+    //save settings
+    {"SV", SVcommand, true},
     //toggle between gen2/3 setup mode
     {"G2", G2command, true},
     //toggle calibration in gen3 setup mode
@@ -234,7 +239,6 @@ void loop() {
         serialEvent();
     if (!told_hello && (millis()%1000)==0) cout<<"#Enter PC for cmd list\n";
     if (have_command_to_parse) {
-        told_hello=true;
         bool commandGood=false;
 
         #ifdef DEBUG_COMMAND
@@ -254,6 +258,7 @@ void loop() {
                 commandGood=false;
             } else {
                 commandGood=cmd->callback();  //Execute the command
+                told_hello=true;
             }
         }
 
@@ -368,11 +373,15 @@ void powerUp() {
   digitalWrite(PIN_ONOFF, HIGH);
   delay(POWERUP_TIME_MS);
   attenuator.set_attens(config.attens);
-  lo.set_freq(config.lo, config.fractional, config.calibrate, config.gen2);
+  lo.set_freq(config.lo, config.fractional, config.calibrate, config.gen2, false);
   config.lo = lo.get_freq();
   config.lo_config = lo.get_config();
 }
 
+void print_attens(attens_t attens) {
+    cout<<"{\"adc1\":"<<attens.adc1<<", \"adc2\":"<<attens.adc2;
+    cout<<" , \"dac1\":"<<attens.dac1<<", \"dac2\":"<<attens.dac2<<"}";
+}
 
 #pragma mark Command Handlers
 //Report the version string
@@ -381,15 +390,15 @@ bool PVcommand() {
   return true;
 }
 
-
 //Print the commands
 bool PCcommand() {
     cout<<F("#PC - Print this list\n"
             "#TS - Tell Status\n"
             "#PV - Print Version\n"
             "#ZB{1} - Zero boot count, reset settings if 1 \n"
-            "#AT[?|#,#,#,#|#,#] - Get/Set attenuation(s).\n"
+            "#AT[?|D1#,D2#,A1#,A2#] - Get/Set attenuations.\n"
             "#LO[#|?] - Get/Set LO\n"
+            "#NF[#] - Nugde LO\n"
             "#FM[?|T|F] - Use fractional (not integer) mode for LO\n"
             "#G2[?|T|F] - Use gen2 mode for LO\n"
             "#CA[?|T|F] - Do full calibration when setting LO\n"
@@ -410,41 +419,47 @@ bool ZBcommand(){
   return true;
 }
 
-void print_attens() {
-    cout<<"{\"adc1\":"<<config.attens.adc1<<", \"adc2\":"<<config.attens.adc2;
-    cout<<" , \"dac1\":"<<config.attens.dac1<<", \"dac2\":"<<config.attens.dac2<<"}";
-}
 
 //Get/Set attenuation: [?|#,#,#,#|#,#]
 bool ATcommand() {
 
     if (instruction.arg_buffer[0]=='?') {
-        print_attens();
+        print_attens(config.attens);
         return true;
     }
 
     attens_t attens;
-    int natten=0;
+    uint8_t natten=0;
 
-   /* walk through other tokens */
-    float *attens_float;
-    attens_float=(float*) (void*) &attens;
-    char *token = strtok(instruction.arg_buffer, ",");
-    for (int i=0;i<4;i++) {
+    char* token = strtok(instruction.arg_buffer, ",");
+    for (uint8_t i=0;i<4;i++) {
         if(token==NULL) break;
         natten++;
-        attens_float[i]=atof(token);
+        float x=atof(token);
+        switch (i) {
+          case 0:
+            attens.dac1=x;
+            break;
+          case 1:
+            attens.dac2=x;
+            break;
+          case 2:
+            attens.adc1=x;
+            break;
+          case 3:
+            attens.adc2=x;
+            break;
+        }
         token = strtok(NULL, ",");
     }
-    cout<<natten<<endl;
     switch (natten) {
-        case 4: //4 attenuations
+        case 4: //4 attenuations   dac1, dac2 adc1, adc2
             attenuator.set_attens(attens);
             break;
-        case 2:  //attenuator number, attenuation
-            if (!attenuator.set_atten(((uint8_t)attens.adc1), attens.adc2))
-              return false;
-            break;
+//        case 2:  //attenuator number, attenuation
+//            if (!attenuator.set_atten(((uint8_t)attens.adc1), attens.adc2))
+//              return false;
+//            break;
         default:
             return false;
     }
@@ -457,18 +472,18 @@ bool ATcommand() {
 bool TScommand() {
   cout<<F("#================\n");
 
-    StaticJsonDocument<64> doc;
-
+    StaticJsonDocument<128> doc;
+    doc[F("coms")]=told_hello;
     doc[F("boot")]=(uint16_t)bootcount;
-    doc[F("version")]=VERSION_STRING;
+    doc[F("ver")]=VERSION_STRING;
     doc[F("gen2")]=config.gen2;
-    doc[F("fractional")]=config.fractional;
-    doc[F("g3fullcal")]=config.calibrate;
+    doc[F("fract")]=config.fractional;
+    doc[F("g3fcal")]=config.calibrate;
     doc[F("lo")]=config.lo;
     doc[F("power")]=powered();
-    Serial.print(F("{\"global\":"));
+    Serial.print(F("{\n\"global\":"));
     serializeJson(doc, Serial);Serial.println(",");
-    Serial.print(F("\"attens\":"));print_attens();Serial.println(",");
+    Serial.print(F("\"attens\":"));print_attens(config.attens);Serial.println(",");
     Serial.print(F("\"trf\":"));lo.tell_status();Serial.println("}");
 
 
@@ -488,6 +503,20 @@ bool TScommand() {
   return true;
 }
 
+bool NFcommand() {
+    if (instruction.arg_len<1)
+        return false;
+    double freq = atof(instruction.arg_buffer);
+    if (!lo.set_freq(freq, config.fractional, config.calibrate, config.gen2, true))
+        return false;
+
+    //NB while presently accurate if not powered this may not always be so
+    config.lo = lo.get_freq();
+    config.lo_config = lo.get_config();
+    return true;
+}
+
+
 bool LOcommand() {
     double freq;
 
@@ -500,7 +529,7 @@ bool LOcommand() {
     }
 
     freq = atof(instruction.arg_buffer);
-    if (!lo.set_freq(freq, config.fractional, config.calibrate, config.gen2))
+    if (!lo.set_freq(freq, config.fractional, config.calibrate, config.gen2, false))
         return false;
 
     //NB while presently accurate if not powered this may not always be so
@@ -590,6 +619,12 @@ bool G2command() {
 bool CAcommand() {
     return bool_setting_command(config.calibrate);
 }
+
+bool SVcommand() {
+    saveEEPROM();
+    return true;
+}
+
 
 bool STcommand() {
   lo.self_test(config.lo, config.fractional);
