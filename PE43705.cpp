@@ -48,12 +48,11 @@ attens_t PE43705::get_attens() {
 
 
 void PE43705::_send(uint8_t channel, uint8_t attenbyte) {
-  uint16_t atten_word;
-  atten_word = (((uint16_t) channel) <<8) | (attenbyte&0x7f);  //p7 of datasheet specifies D7 must be logic low
-
-  digitalWrite(PIN_SS, HIGH);
   SPI.beginTransaction(SPISettings(PE_SPI_FREQ, LSBFIRST, SPI_MODE0));
-  SPI.transfer(atten_word);
+  SPI.transfer(attenbyte & 0x7f); //p7 of datasheet specifies D7 must be logic low
+  SPI.transfer(channel & 0b00000111);
   SPI.endTransaction();
+  digitalWrite(PIN_SS, HIGH);
   digitalWrite(PIN_SS, LOW);
+  SPI.end();
 }
