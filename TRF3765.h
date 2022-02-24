@@ -64,7 +64,7 @@ class TRF3765 {
       double f_NMAX(double freq, regmap_t &rm);
       void self_test(double freq, bool fractional);
       bool set_fref(double frequency);
-      bool set_freq(double frequency, bool fractional, bool calibrate, bool gen2);
+      bool set_freq(double frequency, bool fractional, bool calibrate, bool gen2, bool nudge);
       double get_freq();
       double get_freq(regmap_t &rm);
       void tell_status();

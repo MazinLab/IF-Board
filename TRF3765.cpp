@@ -4,6 +4,404 @@
 #include <SPI.h>
 #include "pins.h"
 
+
+uint8_t factor_2_cal_clk_sel(float factor){
+  uint8_t ret=0, f=0, v=0, n=0;
+  bool lt1=false;
+  if (factor<=1) {
+    lt1=true;
+    factor=1/factor;
+    ret|=0b1000;
+  }
+  f = round(factor);
+  v=f;
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v++; // next power of 22
+  v=(v - f) > (f - (v >> 1)) ? (v >> 1) : v;
+  f=v;
+  while (v >>= 1) ++n;
+  if (lt1) ret|=n;
+  else ret|=7-n;
+ return ret;
+}
+
+
+bool TRF3765::set_freq(double freq, bool fractional, bool calibrate, bool gen2, bool nudge) {
+// freq is in MHz and is doubled, fractional and calibrate have no impact in gen2 mode
+
+//After programming, then set bit r2.en_cal to initiate calibration
+// see pg. 23 for details of chips calibration process per the ~5 calibration related settings
+// cal completes when pll is locked
+// then you read trim and vco from reg0
+// see r_sat_err for calibration overflow
+
+//alternatively its possible to simply tell the device which vco and capacitor to use
+//read vco_sel_mode from reg2 if 1 then
+//vco_sel and vcotrim values set with reg 2 & 6 are used but
+//must be read back with reg0
+//note cal_bypass from reg6 matters
+
+
+    regmap_t rm=REGMAP();
+    freq /= 2; // Output frequency is doubled on the PCB)
+    fractional|=gen2;
+    default_regmap(freq, fractional, rm);
+
+    if (nudge) {
+      rm=_rm;
+      compute_nfrac_nint(freq, fractional, rm);
+    } else if (gen2) {
+//        Serial.print(F("#Gen2"));
+        g2_regmap(freq, rm);
+        //reset(fractional);
+    } else {
+//        Serial.print(F("#Gen3"));
+//        if (calibrate) Serial.print(F(" calibrate"));
+        g3_regmap(freq, fractional, calibrate, rm);
+    }
+//    if (fractional) Serial.print(F(" fractional mode"));
+    Serial.print('\n');
+    tell_status(rm);
+    if (!validate_regmap(freq, rm)) {
+      return false;
+    }
+    program(rm);
+    return true;
+}
+
+void TRF3765::default_regmap(double freq, bool fractional, regmap_t &rm) {
+
+  //lower lo dividers improve phase noise performance
+  //smaller pll dividers improve performace
+  // See plots f_PFD=f_RFSTEP *lo_div/pll_div = f_VCOSTEP/pll_div
+  // integer mode want max f_PFD possible to a target RF step
+  // fractional mode rf step comes via fractional mode divider "A large
+  // fPFD should be used to minimize the effects of fractional controller
+  // noise in the output spectrum. In this case, fPFD may vary according
+  // to the reference clock and fractional spur requirements" (p26)
+
+  uint8_t loDivSel, pllDiv;
+
+  if(freq>=2400){
+    loDivSel = 0;
+  } else if(freq>=1200) {
+    loDivSel = 1;
+  } else if(freq>=600) {
+    loDivSel = 2;
+  } else if(freq>=300) {
+    loDivSel = 3;
+  }
+
+  rm.regs.r1=(reg1_t)REG_FROM_RAW(1, 0b01101001010100000000000000001001);
+//  if (fractional)rm.regs.r2=(reg2_t)REG_FROM_RAW(2, 0x8800000A);
+//  else rm.regs.r2=(reg2_t)REG_FROM_RAW(2, 0x8000000A);
+  //NB gen2 put rm.regs.r2.field.vco_sel=2 if in fractional mode but
+  // DID NOT set vcosel_mode so the setting was ignored
+  rm.regs.r2.field.en_cal=true;
+  rm.regs.r6=(reg6_t)REG_FROM_RAW(6, XSP_REG6_WRITE);
+
+  rm.regs.r6.field.lo_div_sel=loDivSel; //NB fVCO = (1<<LO_DIV_SEL) * freq;
+
+  // For our cases plldiv will be either LO < 6GHz ? 1:2
+  // also known as rf divider in pdf
+  pllDiv = (uint8_t) ceil(((double)(1<<rm.regs.r6.field.lo_div_sel))*freq/3000.0);
+
+  rm.regs.r2.field.pll_div_sel=pllDiv>>1;
+}
+
+void TRF3765::g2_regmap(double freq, regmap_t &rm) {
+//freq is desired output of trf chip in MHz
+
+  rm.regs.r1.field.rdiv=1;
+  compute_nfrac_nint(freq, true, rm);
+  rm.regs.r4=(reg4_t)REG_FROM_RAW(4,XSP_REG4_WRITE_FRAC);
+  rm.regs.r5=(reg5_t)REG_FROM_RAW(5,XSP_REG5_WRITE_FRAC);
+}
+
+void TRF3765::g3_regmap(double freq, bool fractional, bool calibrate, regmap_t &rm) {
+//freq is desired output of trf chip in MHz
+
+  // Calculate parameter and register values
+//  f_RFSTEP = 1e-6;
+//  double f_pfd = f_RFSTEP * (double)(1<<rm.regs.r6.field.lo_div_sel) / (double)(1<<rm.regs.r2.field.pll_div_sel);
+  rm.regs.r1.field.rdiv=1; //fref/f_pfd
+  compute_nfrac_nint(freq, fractional, rm);
+
+
+  /*
+  * for fREF=10MHz this constraint implies scale >=/32 at rdiv=1 and max rdiv=25600
+  * but max rdiv is 8191 as 13bits (and rdiv probably doesn't need to exceed 9 anyway)
+  * per p31
+  */
+  rm.regs.r1.field.cal_clk_sel=factor_2_cal_clk_sel(CAL_CLOCK_FREQ_MHZ/f_PFD(rm)); //default=0b1000, no scaling=FREF/rdiv
+  rm.regs.r2.field.en_cal=true;
+  rm.regs.r2.field.cal_acc=0;
+  rm.regs.r6.field.cal_bypass=false;
+  rm.regs.r2.field.vco_sel_mode=!calibrate;
+  rm.regs.r2.field.vco_sel=3; //highest freq vco
+
+  rm.regs.r4.field.en_frac=fractional;
+  if (fractional) {
+    //per pg 22
+    rm.regs.r4.field.ld_dig_prec=false;
+    rm.regs.r4.field.ld_ana_prec=3;
+    //per pg 28
+    rm.regs.r4.field.en_isource=true;
+    rm.regs.r4.field.en_dith=true;
+    rm.regs.r4.field.dith_sel=false;
+    rm.regs.r4.field.del_sd_clk=2;
+    rm.regs.r5.field.en_ld_isource=false;
+    rm.regs.r1.field.icpdouble=false;
+    // Optimal performance may require tuning the
+    // MOD_ORD, ISOURCE_SINK, and ISOURCE_TRIM values according to the chosen frequency band.
+    rm.regs.r4.field.mod_ord=2;
+    rm.regs.r6.field.isource_sink=false;
+    rm.regs.r6.field.isource_trim=4;  //or 7, isouce bias current (nb en_isource=true)
+  } else {
+    //per pg 22
+    rm.regs.r4.field.ld_dig_prec=false;
+    rm.regs.r4.field.ld_ana_prec=0;
+  }
+
+  rm.regs.r4.field.en_extvco=false;
+  rm.regs.r4.field.speedup=false;
+}
+
+void TRF3765::compute_nfrac_nint(double freq, bool fractional, regmap_t &rm) {
+// freq is output freq of trf chip in MHz
+// must have valid r1.field.rdiv, r6.field.lo_div_sel, and r2.field.pll_div_sel
+// computes r2.field.prescale_sel, r2.field.nint, and r3.field.nfrac
+  double frac_tmp;
+  frac_tmp=freq*(double)rm.regs.r1.field.rdiv*(double)(1<<rm.regs.r6.field.lo_div_sel)/(fref*(double)(1<<rm.regs.r2.field.pll_div_sel));
+
+  rm.regs.r2.field.nint=frac_tmp;
+  rm.regs.r3.field.nfrac=(frac_tmp-rm.regs.r2.field.nint)*(double)(((uint32_t)1)<<25);
+  // prscSel==0 ? 4/5ths : 8/9ths; limit 72 in integer mode, 75 in frac
+  rm.regs.r2.field.prescale_sel=rm.regs.r2.field.nint>=(fractional ? 75:72);
+}
+
+bool TRF3765::validate_regmap(double freq, regmap_t &rm) {
+  bool fail=true;
+  if (freq<300 || freq >4800) {
+    Serial.println(F("ERROR: Frequency out of range."));
+    fail=false;
+  }
+  if (rm.regs.r2.field.pll_div_sel>2) {
+    Serial.println(F("ERROR: Invalid PLL_DIV!"));
+    fail=false;
+  }
+  if (rm.regs.r2.field.nint < (rm.regs.r4.field.en_frac ? 23:20)) {
+    Serial.println(F("ERROR: nint too low, see pg26!"));
+    fail=false;
+  }
+  if (f_NMAX(freq, rm) > 375){
+    Serial.println(F("ERROR: Digital divider freq. (fN) to high!"));
+    fail=false;
+  }
+  double cc = cal_clock(rm);
+  if(.05 > cc || cc > .6) {
+    Serial.println(("ERROR: Slow cal_clock by increasing rdiv, CAL_CLK_SEL, or lowering Fref"));
+    fail=false;
+  }
+  return fail;
+}
+
+void TRF3765::program(regmap_t &rm) {
+    //Note that gen2 wrote XSP_REG0_WRITE before these writes
+    _send(rm.regs.r1.raw);
+    _send(rm.regs.r3.raw);
+    _send(rm.regs.r4.raw);
+    _send(rm.regs.r5.raw);
+    _send(rm.regs.r6.raw);
+    _send(rm.regs.r2.raw);   //must write reg2 last as it kicks off the calibration when en_cal is true
+    _rm=rm;
+}
+
+//Gets LO value
+double TRF3765::get_freq() {
+  //must have current regmap at _rm
+  return get_freq(_rm);
+}
+
+double TRF3765::get_freq(regmap_t &rm) {
+
+  //F_PFD = fref/rm.regs.r1.field.rdiv;
+  //F_PFD //phase frequnecy detector frequency
+  double fvco;
+  double pll_divider = (1<<rm.regs.r2.field.pll_div_sel);
+  if (rm.regs.r4.field.en_frac) {
+    fvco = fref*pll_divider*((double)rm.regs.r2.field.nint+(double)rm.regs.r3.field.nfrac/(double)(((uint32_t) 1)<<25))/(double)rm.regs.r1.field.rdiv;
+  } else {
+    fvco = fref*pll_divider*(double)rm.regs.r2.field.nint/(double)rm.regs.r1.field.rdiv;
+  }
+  return 2.0*fvco/(double)(1<<rm.regs.r6.field.lo_div_sel);
+}
+
+void TRF3765::reset(bool fractional=true) {
+  regmap_t init_data=REGMAP();
+//  init_data.regs.r0=(reg0_t) REG_FROM_RAW(0,XSP_REG0_WRITE);
+  init_data.regs.r1=(reg1_t) REG_FROM_RAW(1,XSP_REG1_WRITE);
+  init_data.regs.r4=(reg4_t) REG_FROM_RAW(4,XSP_REG4_WRITE);
+
+  if (fractional) {
+      init_data.regs.r2=(reg2_t) REG_FROM_RAW(2, XSP_REG2_WRITE_ENC);
+      init_data.regs.r5=(reg5_t) REG_FROM_RAW(5, XSP_REG5_WRITE_FRAC);
+      init_data.regs.r6=(reg6_t) REG_FROM_RAW(6, XSP_REG6_WRITE_FRAC);
+  } else {
+      init_data.regs.r2=(reg2_t) REG_FROM_RAW(2, XSP_REG2_WRITE);
+      init_data.regs.r5=(reg5_t) REG_FROM_RAW(5, XSP_REG5_WRITE);
+      init_data.regs.r6=(reg6_t) REG_FROM_RAW(6, XSP_REG6_WRITE);
+  }
+
+  Serial.println(F("#Init registers"));
+  tell_status(init_data);
+
+  for (int i=1;i<7;i++) _send(init_data.data[i]);
+}
+
+void TRF3765::tell_status() {
+  for (int i=0;i<7;i++)
+    _rm.data[i]=_request(RB_REQUEST(i).raw);
+  tell_status(_rm);
+}
+
+//void TRF3765::tell_status(regmap_t &rm) {
+
+//  Serial.print("en_frac=");
+//  if (rm.regs.r4.field.en_frac) Serial.println(F("true"));
+//  else Serial.println(F("false"));
+//  Serial.print("vco_sel_mode=");
+//  if (rm.regs.r2.field.vco_sel_mode) Serial.println(F("true"));
+//  else Serial.println(F("false"));
+//  Serial.print("f_REF=");Serial.print(fref);Serial.println(" MHz");
+//  Serial.print("f_PFD=");Serial.print(f_PFD(rm));Serial.println(" MHz");
+//  Serial.print("f_calclk=");Serial.print(cal_clock(rm));Serial.println(" MHz");
+//  Serial.print("df_RF=");Serial.print(2e6*f_RFSTEP(rm));Serial.println(" Hz");  //freq. doubler
+//  Serial.print("f_LO=");Serial.print(get_freq(rm), 3);Serial.println(" MHz");
+//  Serial.print(F("pll_locked="));
+//  if (locked()) Serial.print(F("true"));
+//  else Serial.print(F("false"));
+//  Serial.print(" (pin=");Serial.print(digitalRead(PIN_LOCKED));
+//  Serial.print(" rise=");Serial.print(_rise);Serial.println(")");
+//  tell_regmap(rm);
+//
+//
+////  Serial.print("Reg7: 0x");Serial.println(_request(RB_REQUEST(7).raw),HEX);
+//}
+
+
+void TRF3765::tell_status(regmap_t &rm) {
+
+    StaticJsonDocument<512> doc;
+
+    doc[F("f_REF")]=fref;
+    doc[F("f_PFD")]=f_PFD(rm);
+    doc[F("f_calclk")]=cal_clock(rm);
+    doc[F("df_RF")]=2*f_RFSTEP(rm);  //freq. doubler
+    doc[F("f_LO")]=get_freq(rm);
+    doc[F("pll_locked")]=locked();
+    Serial.print("[\n");
+    serializeJson(doc, Serial);Serial.println(",");
+    doc.clear();
+    JsonObject r0=doc.createNestedObject(F("r0"));
+    r0[F("raw")]=rm.regs.r0.raw;
+    r0[F("chip_id")]=rm.regs.r0.field.chip_id;
+    r0[F("r_sat_err")]=rm.regs.r0.field.r_sat_err;
+    r0[F("vco_trim")]=(uint16_t)rm.regs.r0.field.vco_trim;
+    r0[F("vco_sel")]=(uint16_t)rm.regs.r0.field.vco_sel;
+    r0[F("count_mode_mux_sel")]=rm.regs.r0.field.count_mode_mux_sel;
+    r0[F("count")]=rm.regs.r0.tst_mode.count;
+    serializeJson(doc, Serial);Serial.println(",");
+    doc.clear();
+    JsonObject r1 = doc.createNestedObject(F("r1"));
+    r1[F("raw")]=rm.regs.r1.raw;
+    r1[F("rdiv")]=rm.regs.r1.field.rdiv;
+    r1[F("invert_ref_clock")]=rm.regs.r1.field.invert_ref_clock;
+    r1[F("neg_vco")]=rm.regs.r1.field.neg_vco;
+    r1[F("icp")]=(uint16_t)rm.regs.r1.field.icp;
+    r1[F("icpdouble")]=rm.regs.r1.field.icpdouble;
+    r1[F("cal_clk_sel")]=(uint16_t)rm.regs.r1.field.cal_clk_sel;
+    serializeJson(doc, Serial);Serial.println(",");
+    doc.clear();
+    JsonObject r2 = doc.createNestedObject(F("r2"));
+    r2[F("raw")]=rm.regs.r2.raw;
+    r2[F("nint")]=rm.regs.r2.field.nint;
+    r2[F("pll_div_sel")]=(uint16_t)rm.regs.r2.field.pll_div_sel;
+    r2[F("prescale_sel")]=rm.regs.r2.field.prescale_sel;
+    r2[F("vco_sel")]=(uint16_t)rm.regs.r2.field.vco_sel;
+    r2[F("vcosel_mode")]=rm.regs.r2.field.vco_sel_mode;
+    r2[F("cal_acc")]=(uint16_t)rm.regs.r2.field.cal_acc;
+    r2[F("en_cal")]=rm.regs.r2.field.en_cal;
+    serializeJson(doc, Serial);Serial.println(",");
+    doc.clear();
+    JsonObject r3 = doc.createNestedObject(F("r3"));
+    r3[F("raw")]=rm.regs.r3.raw;
+    r3[F("nfrac")]=rm.regs.r3.field.nfrac;
+    serializeJson(doc, Serial);Serial.println(",");
+    doc.clear();
+    JsonObject r4 = doc.createNestedObject(F("r4"));
+    r4[F("raw")]=rm.regs.r4.raw;
+    r4[F("pwd_pll")]=rm.regs.r4.field.pwd_pll;
+    r4[F("pwd_cp")]=rm.regs.r4.field.pwd_cp;
+    r4[F("pwd_vco")]=rm.regs.r4.field.pwd_vco;
+    r4[F("pwd_vcomux")]=rm.regs.r4.field.pwd_vcomux;
+    r4[F("pwd_rfdiv")]=rm.regs.r4.field.pwd_rfdiv;
+    r4[F("pwd_presc")]=rm.regs.r4.field.pwd_presc;
+    r4[F("pwd_lodiv")]=rm.regs.r4.field.pwd_lodiv;
+    r4[F("pwd_buff1")]=rm.regs.r4.field.pwd_buff1;
+    r4[F("pwd_buff2")]=rm.regs.r4.field.pwd_buff2;
+    r4[F("pwd_buff3")]=rm.regs.r4.field.pwd_buff3;
+    r4[F("pwd_buff4")]=rm.regs.r4.field.pwd_buff4;
+    r4[F("en_extvco")]=rm.regs.r4.field.en_extvco;
+    r4[F("ext_vco_ctrl")]=rm.regs.r4.field.ext_vco_ctrl;
+    r4[F("en_isource")]=rm.regs.r4.field.en_isource;
+    r4[F("ld_ana_prec")]=(uint16_t)rm.regs.r4.field.ld_ana_prec;
+    r4[F("cp_tristate")]=(uint16_t)rm.regs.r4.field.cp_tristate;
+    r4[F("speedup")]=rm.regs.r4.field.speedup;
+    r4[F("ld_dig_prec")]=rm.regs.r4.field.ld_dig_prec;
+    r4[F("en_dith")]=rm.regs.r4.field.en_dith;
+    r4[F("mod_ord")]=(uint16_t)rm.regs.r4.field.mod_ord;
+    r4[F("dith_sel")]=rm.regs.r4.field.dith_sel;
+    r4[F("del_sd_clk")]=(uint16_t)rm.regs.r4.field.del_sd_clk;
+    r4[F("en_frac")]=rm.regs.r4.field.en_frac;
+    serializeJson(doc, Serial);Serial.println(",");
+    doc.clear();
+    JsonObject r5 = doc.createNestedObject(F("r5"));
+    r5[F("raw")]=rm.regs.r5.raw;
+    r5[F("vcobias_rtirm")]=(uint16_t)rm.regs.r5.field.vcobias_rtirm;
+    r5[F("pllbias_rtrim")]=(uint16_t)rm.regs.r5.field.pllbias_rtrim;
+    r5[F("vco_bias")]=(uint16_t)rm.regs.r5.field.vco_bias;
+    r5[F("vcobuf_bias")]=(uint16_t)rm.regs.r5.field.vcobuf_bias;
+    r5[F("vcomux_bias")]=(uint16_t)rm.regs.r5.field.vcomux_bias;
+    r5[F("bufout_bias")]=(uint16_t)rm.regs.r5.field.bufout_bias;
+    r5[F("vco_cal_ib")]=rm.regs.r5.field.vco_cal_ib;
+    r5[F("vco_cal_ref")]=(uint16_t)rm.regs.r5.field.vco_cal_ref;
+    r5[F("vco_ampl_ctrl")]=(uint16_t)rm.regs.r5.field.vco_ampl_ctrl;
+    r5[F("vco_vb_ctrl")]=(uint16_t)rm.regs.r5.field.vco_vb_ctrl;
+    r5[F("en_ld_isource")]=rm.regs.r5.field.en_ld_isource;
+    serializeJson(doc, Serial);Serial.println(",");
+    doc.clear();
+    JsonObject r6 = doc.createNestedObject(F("r6"));
+    r6[F("raw")]=rm.regs.r6.raw;
+    r6[F("vco_trim")]=(uint16_t)rm.regs.r6.field.vco_trim;
+    r6[F("en_lockdet")]=rm.regs.r6.field.en_lockdet;
+    r6[F("vco_test_mode")]=rm.regs.r6.field.vco_test_mode;
+    r6[F("cal_bypass")]=rm.regs.r6.field.cal_bypass;
+    r6[F("mux_ctrl")]=(uint16_t)rm.regs.r6.field.mux_ctrl;
+    r6[F("isource_sink")]=rm.regs.r6.field.isource_sink;
+    r6[F("isource_trim")]=(uint16_t)rm.regs.r6.field.isource_trim;
+    r6[F("lo_div_sel")]=(uint16_t)rm.regs.r6.field.lo_div_sel;
+    r6[F("lo_div_ib")]=(uint16_t)rm.regs.r6.field.lo_div_ib;
+    r6[F("div_mux_ref")]=(uint16_t)rm.regs.r6.field.div_mux_ref;
+    r6[F("div_mux_out")]=(uint16_t)rm.regs.r6.field.div_mux_out;
+    r6[F("div_mux_bias_ovrd")]=rm.regs.r6.field.div_mux_bias_ovrd;
+    serializeJson(doc, Serial);Serial.print("]");
+}
+
+
 void TRF3765::set_rise(uint32_t rise) {
   _rise=rise;
 }
@@ -161,29 +559,6 @@ double TRF3765::cal_clock(regmap_t &rm) {
     return f_pfd*(1<<(7-rm.regs.r1.field.cal_clk_sel));
 }
 
-uint8_t factor_2_cal_clk_sel(float factor){
-  uint8_t ret=0, f=0, v=0, n=0;
-  bool lt1=false;
-  if (factor<=1) {
-    lt1=true;
-    factor=1/factor;
-    ret|=0b1000;
-  }
-  f = round(factor);
-  v=f;
-  v--;
-  v |= v >> 1;
-  v |= v >> 2;
-  v |= v >> 4;
-  v++; // next power of 22
-  v=(v - f) > (f - (v >> 1)) ? (v >> 1) : v;
-  f=v;
-  while (v >>= 1) ++n;
-  if (lt1) ret|=n;
-  else ret|=7-n;
- return ret;
-}
-
 
 double TRF3765::f_RFSTEP(regmap_t &rm) {
   double step=f_PFD(rm)*(1<<rm.regs.r2.field.pll_div_sel)/(double) (1<<rm.regs.r6.field.lo_div_sel);
@@ -196,597 +571,6 @@ double TRF3765::f_NMAX(double freq, regmap_t &rm) {
   return (1<<rm.regs.r6.field.lo_div_sel) * freq/(1<<rm.regs.r2.field.pll_div_sel)/ (rm.regs.r2.field.prescale_sel ? 8.0:4.0);
 }
 
-
-//bool TRF3765::set_freq(double freq, bool fractional, bool calibrate, bool gen2) {
-////freq is in MHz
-//
-////gen 2 tells lo to use vco 0 and device picks trim cap
-//
-////After programming, then set bit r2.en_cal to initiate calibration
-//// see pg. 23 for details of chips calibration process per the ~5 calibration related settings
-//// cal completes when pll is locked
-//// then you read trim and vco from reg0
-//// see r_sat_err for calibration overflow
-//
-////alternatively its possible to simply tell the device which vco and capacitor to use
-//
-////read vco_sel_mode from reg2 if 1 then
-////vco_sel and vcotrim values set with reg 2 & 6 are used but
-////must be read back with reg0
-////note cal_bypass from reg6 matters
-//
-//  uint8_t loDivSel, pllDiv, pllDivSel, prscSel;
-//  uint16_t rDiv, nInt;
-//  uint32_t nFrac;
-//  bool fail=false;
-//  regmap_t rm=REGMAP(), rm_g3;
-//
-//
-//  // Calculate parameter and register values
-//  rDiv = 1; //pdf suggests this should be Fref/FPDF FPFD is the rf step size for us this maybe should be the dac resolution of ~7.62kHz
-//  freq /= 2; // Output frequency is doubled on the PCB)
-//
-//  if (freq<300 || freq >4800) {
-//    Serial.println(F("ERROR: Frequency out of range."));
-//    return false;
-//  }
-//
-//  //lower lo dividers improve phase noise performance
-//  //smaller pll dividers improve performace
-//  // See plots f_PFD=f_RFSTEP *lo_div/pll_div = f_VCOSTEP/pll_div
-//  // integer mode want max f_PFD possible to a target RF step
-//  // fractional mode rf step comes via fractional mode divider "A large
-//  // fPFD should be used to minimize the effects of fractional controller
-//  // noise in the output spectrum. In this case, fPFD may vary according
-//  // to the reference clock and fractional spur requirements" (p26)
-//
-//  if(freq>=2400){
-//    loDivSel = 0;
-//  } else if(freq>=1200) {
-//    loDivSel = 1;
-//  } else if(freq>=600) {
-//    loDivSel = 2;
-//  } else if(freq>=300) {
-//    loDivSel = 3;
-//  }
-//
-//  pllDiv = (uint8_t) ceil(((double)(1<<loDivSel))*freq/3000.0);  //also known as rf divider in pdf
-//  // For our cases plldiv will be either LO < 6GHz ? 1:2
-//
-//  //NB fVCO = (1<<LO_DIV_SEL) * freq;
-//  double frac_tmp=freq*(double)rDiv*(double)(1<<loDivSel)/(fref*(double)pllDiv);
-//  nInt = (uint16_t) frac_tmp;
-//  nFrac = (frac_tmp-nInt)*(double)(((uint32_t)1)<<25);
-//
-//  //prscSel==0 ? 4/5ths : 8/9ths
-//  prscSel = nInt>=(fractional ? 75:72);   // 72 in integer mode, 75 in frac
-//
-//  pllDivSel = pllDiv>>1;
-//
-//  if (nInt<(fractional ? 23:20)) {
-//    Serial.println(F("ERROR: nint too low, see pg26! (g2)"));
-//    fail=gen2;
-//  }
-//
-//  if (pllDivSel>2) {
-//    Serial.println(F("ERROR: Invalid PLL_DIV!"));
-//    fail=true;
-//  }
-//
-//
-//  rm.regs.r1=(reg1_t)REG_FROM_RAW(1, 0b01101001010100000000000000001001);
-//  rm.regs.r1.field.rdiv=rDiv;
-//
-//  rm.regs.r6=(reg6_t)REG_FROM_RAW(6, XSP_REG6_WRITE);
-//  rm.regs.r6.field.lo_div_sel=loDivSel;
-//
-//  if (fractional) {
-//    rm.regs.r2=(reg2_t)REG_FROM_RAW(2, 0x8800000A);
-//    rm.regs.r3.field.nfrac=nFrac;
-//  }
-//  else
-//    rm.regs.r2=(reg2_t)REG_FROM_RAW(2, 0x0800000A);
-//  rm.regs.r2.field.nint=nInt;
-//  rm.regs.r2.field.prescale_sel=prscSel;
-//  rm.regs.r2.field.pll_div_sel=pllDivSel;
-//
-//  if (f_NMAX(freq, rm) > 375){
-//    Serial.println(F("Digital divider freq. (fN) to high! (g2)"));
-//    fail=gen2;
-//  }
-//
-////  Serial.println("GEN2REGS");
-////  tell_status(rm);
-//
-//  // GEN3 -------
-//  rm_g3=rm;
-////  f_RFSTEP = 1e-6;
-////  double f_pfd = f_RFSTEP * (1<<loDivSel)/ (double)(1<<pllDivSel);
-////  rm_g3.regs.r1.field.rdiv=fref/f_pfd;
-//  rm_g3.regs.r1.field.rdiv=1;
-//
-//  frac_tmp=freq*(double)rm_g3.regs.r1.field.rdiv*(double)(1<<loDivSel)/(fref*(double)pllDiv);
-//  //prscSel==0 ? 4/5ths : 8/9ths
-//  prscSel = ((uint16_t) frac_tmp)>=(fractional ? 75:72);   // 72 in integer mode, 75 in frac
-//
-//  if (((uint16_t)frac_tmp)<(fractional ? 23:20)) {
-//    Serial.println(F("ERROR: nint too low, see pg26 (g3)!"));
-//    fail=!gen2;
-//  }
-//
-//
-//  rm_g3.regs.r2.field.nint=frac_tmp;
-//  rm_g3.regs.r3.field.nfrac=(frac_tmp-rm.regs.r2.field.nint)*(double)(1<<25);
-//  rm_g3.regs.r2.field.prescale_sel=prscSel;
-//
-//  if (f_NMAX(freq, rm_g3) > 375){
-//    Serial.println(F("Digital divider freq. (fN) to high (g3)!"));
-//    fail=!gen2;
-//  }
-//  /*
-//  for fREF=10MHz this constraint implies scale >=/32 at rdiv=1 and max rdiv=25600
-//  //but max rdiv is 8191 as 13bits (and rdiv probably doesn't need to exceed 9 anyway)
-//  //per p31
-//  */
-//  //must write reg2 last as it kicks off the calibration when en_cal is true
-//  rm_g3.regs.r1.field.cal_clk_sel=factor_2_cal_clk_sel(.3/f_PFD(rm_g3)); //default=0b1000, no scaling=FREF/rdiv
-//  rm_g3.regs.r2.field.en_cal=true;
-//  rm_g3.regs.r2.field.cal_acc=0;
-//  rm_g3.regs.r6.field.cal_bypass=false;
-//  rm_g3.regs.r2.field.vco_sel_mode=!calibrate;
-//  rm_g3.regs.r2.field.vco_sel=3; //highest freq vco
-//
-//  if(.05 > cal_clock(rm) || cal_clock(rm) > .6) {
-//    Serial.println(F("Slow cal_clock by increasing rdiv, CAL_CLK_SEL, or lowering fref (g2)"));
-//    fail = gen2;
-//  }
-//
-//  if(.05 > cal_clock(rm_g3) || cal_clock(rm_g3) > .6) {
-//    Serial.println(("Slow cal clock by increasing rdiv, CAL_CLK_SEL, or lowering fref (g3)"));
-//    fail = !gen2;
-//  }
-//
-//  if (fractional) {
-//    //per pg 22
-//    rm_g3.regs.r4.field.ld_dig_prec=false;
-//    rm_g3.regs.r4.field.ld_ana_prec=3;
-//    //per pg 28
-//    //Optimal performance may require tuning the
-//    // MOD_ORD, ISOURCE_SINK, and ISOURCE_TRIM
-//    //values according to the chosen frequency band.
-//    rm_g3.regs.r4.field.en_isource=true;
-//    rm_g3.regs.r4.field.en_dith=true;
-//    rm_g3.regs.r4.field.mod_ord=2;
-//    rm_g3.regs.r4.field.dith_sel=false;
-//    rm_g3.regs.r4.field.del_sd_clk=2;
-//    rm_g3.regs.r4.field.en_frac=true;
-//    rm_g3.regs.r5.field.en_ld_isource=false;
-//    rm_g3.regs.r6.field.isource_sink=false;
-//    rm_g3.regs.r6.field.isource_trim=4;  //or 7, isouce bias current (as en_isource=true)
-//    rm_g3.regs.r1.field.icpdouble=false;
-//  } else {
-//    rm_g3.regs.r4.field.en_frac=false;
-//    //per pg 22
-//    rm_g3.regs.r4.field.ld_dig_prec=false;
-//    rm_g3.regs.r4.field.ld_ana_prec=0;
-//  }
-//
-//  rm_g3.regs.r4.field.en_extvco=false;
-//  rm_g3.regs.r4.field.speedup=false;
-//
-//  // GEN3 -------
-//
-//
-//  if (gen2) {
-//    Serial.print(F("Gen2"));
-//    if (fractional) Serial.println(F(" fractional mode"));
-////    reset(fractional);
-//    if (fractional) {
-//      rm.regs.r4=(reg4_t)REG_FROM_RAW(4,XSP_REG4_WRITE_FRAC);
-//      rm.regs.r5=(reg5_t)REG_FROM_RAW(5,XSP_REG5_WRITE_FRAC);
-//    } else {
-//      //Note that the microblaze gen2 code NEVER wrote the value it computed for r2 in integer mode!
-//      rm.regs.r4=(reg4_t)REG_FROM_RAW(4,XSP_REG4_WRITE);
-//      rm.regs.r5=(reg5_t)REG_FROM_RAW(5,XSP_REG5_WRITE);
-//      rm.regs.r2=(reg2_t)REG_FROM_RAW(2,XSP_REG2_WRITE_ENC);
-//    }
-//  } else {
-//    Serial.print(F("Gen3"));
-//    if (calibrate) Serial.print(F(" calibrate"));
-//    if (fractional) Serial.println(F(" fractional mode"));
-//    rm=rm_g3;
-//  }
-//
-//
-//  tell_status(rm);
-//  //Note that gen2 wrote XSP_REG0_WRITE before these writes
-//  if (!fail) {
-//    _send(rm.regs.r1.raw);
-//    _send(rm.regs.r3.raw);
-//    _send(rm.regs.r4.raw);
-//    _send(rm.regs.r5.raw);
-//    _send(rm.regs.r6.raw);
-//    _send(rm.regs.r2.raw);
-//    _rm=rm;
-//  }
-//  return true;
-//}
-
-
-bool TRF3765::set_freq(double freq, bool fractional, bool calibrate, bool gen2) {
-// freq is in MHz and is doubled, fractional and calibrate have no impact in gen2 mode
-
-//After programming, then set bit r2.en_cal to initiate calibration
-// see pg. 23 for details of chips calibration process per the ~5 calibration related settings
-// cal completes when pll is locked
-// then you read trim and vco from reg0
-// see r_sat_err for calibration overflow
-
-//alternatively its possible to simply tell the device which vco and capacitor to use
-//read vco_sel_mode from reg2 if 1 then
-//vco_sel and vcotrim values set with reg 2 & 6 are used but
-//must be read back with reg0
-//note cal_bypass from reg6 matters
-
-
-    regmap_t rm=REGMAP();
-    freq /= 2; // Output frequency is doubled on the PCB)
-    fractional|=gen2;
-    default_regmap(freq, fractional, rm);
-
-    if (gen2) {
-        Serial.print(F("#Gen2"));
-        g2_regmap(freq, rm);
-        //reset(fractional);
-    } else {
-        Serial.print(F("#Gen3"));
-        if (calibrate) Serial.print(F(" calibrate"));
-        g3_regmap(freq, fractional, calibrate, rm);
-    }
-    if (fractional) Serial.print(F(" fractional mode"));
-    Serial.print('\n');
-    tell_status(rm);
-    if (!validate_regmap(freq, rm)) {
-      return false;
-    }
-    program(rm);
-    return true;
-}
-
-void TRF3765::default_regmap(double freq, bool fractional, regmap_t &rm) {
-
-  //lower lo dividers improve phase noise performance
-  //smaller pll dividers improve performace
-  // See plots f_PFD=f_RFSTEP *lo_div/pll_div = f_VCOSTEP/pll_div
-  // integer mode want max f_PFD possible to a target RF step
-  // fractional mode rf step comes via fractional mode divider "A large
-  // fPFD should be used to minimize the effects of fractional controller
-  // noise in the output spectrum. In this case, fPFD may vary according
-  // to the reference clock and fractional spur requirements" (p26)
-
-  uint8_t loDivSel, pllDiv;
-
-  if(freq>=2400){
-    loDivSel = 0;
-  } else if(freq>=1200) {
-    loDivSel = 1;
-  } else if(freq>=600) {
-    loDivSel = 2;
-  } else if(freq>=300) {
-    loDivSel = 3;
-  }
-
-  rm.regs.r1=(reg1_t)REG_FROM_RAW(1, 0b01101001010100000000000000001001);
-//  if (fractional)rm.regs.r2=(reg2_t)REG_FROM_RAW(2, 0x8800000A);
-//  else rm.regs.r2=(reg2_t)REG_FROM_RAW(2, 0x8000000A);
-  //NB gen2 put rm.regs.r2.field.vco_sel=2 if in fractional mode but
-  // DID NOT set vcosel_mode so the setting was ignored
-  rm.regs.r2.field.en_cal=true;
-  rm.regs.r6=(reg6_t)REG_FROM_RAW(6, XSP_REG6_WRITE);
-
-  rm.regs.r6.field.lo_div_sel=loDivSel; //NB fVCO = (1<<LO_DIV_SEL) * freq;
-
-  // For our cases plldiv will be either LO < 6GHz ? 1:2
-  // also known as rf divider in pdf
-  pllDiv = (uint8_t) ceil(((double)(1<<rm.regs.r6.field.lo_div_sel))*freq/3000.0);
-
-  rm.regs.r2.field.pll_div_sel=pllDiv>>1;
-}
-
-void TRF3765::g2_regmap(double freq, regmap_t &rm) {
-//freq is desired output of trf chip in MHz
-
-  rm.regs.r1.field.rdiv=1;
-  compute_nfrac_nint(freq, true, rm);
-  rm.regs.r4=(reg4_t)REG_FROM_RAW(4,XSP_REG4_WRITE_FRAC);
-  rm.regs.r5=(reg5_t)REG_FROM_RAW(5,XSP_REG5_WRITE_FRAC);
-}
-
-void TRF3765::g3_regmap(double freq, bool fractional, bool calibrate, regmap_t &rm) {
-//freq is desired output of trf chip in MHz
-
-  // Calculate parameter and register values
-//  f_RFSTEP = 1e-6;
-//  double f_pfd = f_RFSTEP * (double)(1<<rm.regs.r6.field.lo_div_sel) / (double)(1<<rm.regs.r2.field.pll_div_sel);
-  rm.regs.r1.field.rdiv=1; //fref/f_pfd
-
-  compute_nfrac_nint(freq, fractional, rm);
-
-
-  /*
-  * for fREF=10MHz this constraint implies scale >=/32 at rdiv=1 and max rdiv=25600
-  * but max rdiv is 8191 as 13bits (and rdiv probably doesn't need to exceed 9 anyway)
-  * per p31
-  */
-  rm.regs.r1.field.cal_clk_sel=factor_2_cal_clk_sel(CAL_CLOCK_FREQ_MHZ/f_PFD(rm)); //default=0b1000, no scaling=FREF/rdiv
-  rm.regs.r2.field.en_cal=true;
-  rm.regs.r2.field.cal_acc=0;
-  rm.regs.r6.field.cal_bypass=false;
-  rm.regs.r2.field.vco_sel_mode=!calibrate;
-  rm.regs.r2.field.vco_sel=3; //highest freq vco
-
-  rm.regs.r4.field.en_frac=fractional;
-  if (fractional) {
-    //per pg 22
-    rm.regs.r4.field.ld_dig_prec=false;
-    rm.regs.r4.field.ld_ana_prec=3;
-    //per pg 28
-    rm.regs.r4.field.en_isource=true;
-    rm.regs.r4.field.en_dith=true;
-    rm.regs.r4.field.dith_sel=false;
-    rm.regs.r4.field.del_sd_clk=2;
-    rm.regs.r5.field.en_ld_isource=false;
-    rm.regs.r1.field.icpdouble=false;
-    // Optimal performance may require tuning the
-    // MOD_ORD, ISOURCE_SINK, and ISOURCE_TRIM values according to the chosen frequency band.
-    rm.regs.r4.field.mod_ord=2;
-    rm.regs.r6.field.isource_sink=false;
-    rm.regs.r6.field.isource_trim=4;  //or 7, isouce bias current (nb en_isource=true)
-  } else {
-    //per pg 22
-    rm.regs.r4.field.ld_dig_prec=false;
-    rm.regs.r4.field.ld_ana_prec=0;
-  }
-
-  rm.regs.r4.field.en_extvco=false;
-  rm.regs.r4.field.speedup=false;
-}
-
-void TRF3765::compute_nfrac_nint(double freq, bool fractional, regmap_t &rm) {
-// freq is output freq of trf chip in MHz
-// must have valid r1.field.rdiv, r6.field.lo_div_sel, and r2.field.pll_div_sel
-// computes r2.field.prescale_sel, r2.field.nint, and r3.field.nfrac
-  double frac_tmp;
-  frac_tmp=freq*(double)rm.regs.r1.field.rdiv*(double)(1<<rm.regs.r6.field.lo_div_sel)/(fref*(double)(1<<rm.regs.r2.field.pll_div_sel));
-
-  rm.regs.r2.field.nint=frac_tmp;
-  rm.regs.r3.field.nfrac=(frac_tmp-rm.regs.r2.field.nint)*(double)(((uint32_t)1)<<25);
-  // prscSel==0 ? 4/5ths : 8/9ths; limit 72 in integer mode, 75 in frac
-  rm.regs.r2.field.prescale_sel=rm.regs.r2.field.nint>=(fractional ? 75:72);
-  Serial.print("\nfreq:");Serial.println(freq);
-  Serial.print("frac_tmp:");Serial.println(frac_tmp);
-  Serial.print("nint:");Serial.println(rm.regs.r2.field.nint);
-  Serial.print("nfrac:");Serial.println(rm.regs.r3.field.nfrac);
-  Serial.print("prescale_sel:");Serial.println((uint16_t)rm.regs.r2.field.prescale_sel);
-}
-
-bool TRF3765::validate_regmap(double freq, regmap_t &rm) {
-  bool fail=true;
-  if (freq<300 || freq >4800) {
-    Serial.println(F("ERROR: Frequency out of range."));
-    fail=false;
-  }
-  if (rm.regs.r2.field.pll_div_sel>2) {
-    Serial.println(F("ERROR: Invalid PLL_DIV!"));
-    fail=false;
-  }
-  if (rm.regs.r2.field.nint < (rm.regs.r4.field.en_frac ? 23:20)) {
-    Serial.println(F("ERROR: nint too low, see pg26!"));
-    fail=false;
-  }
-  if (f_NMAX(freq, rm) > 375){
-    Serial.println(F("ERROR: Digital divider freq. (fN) to high!"));
-    fail=false;
-  }
-  double cc = cal_clock(rm);
-  if(.05 > cc || cc > .6) {
-    Serial.println(("ERROR: Slow cal_clock by increasing rdiv, CAL_CLK_SEL, or lowering Fref"));
-    fail=false;
-  }
-  return fail;
-}
-
-void TRF3765::program(regmap_t &rm) {
-    //Note that gen2 wrote XSP_REG0_WRITE before these writes
-    _send(rm.regs.r1.raw);
-    _send(rm.regs.r3.raw);
-    _send(rm.regs.r4.raw);
-    _send(rm.regs.r5.raw);
-    _send(rm.regs.r6.raw);
-    _send(rm.regs.r2.raw);   //must write reg2 last as it kicks off the calibration when en_cal is true
-    _rm=rm;
-}
-
-//Gets LO value
-double TRF3765::get_freq() {
-  //must have current regmap at _rm
-  return get_freq(_rm);
-}
-
-double TRF3765::get_freq(regmap_t &rm) {
-
-  //F_PFD = fref/rm.regs.r1.field.rdiv;
-  //F_PFD //phase frequnecy detector frequency
-  double fvco;
-  double pll_divider = (1<<rm.regs.r2.field.pll_div_sel);
-  if (rm.regs.r4.field.en_frac) {
-    fvco = fref*pll_divider*((double)rm.regs.r2.field.nint+(double)rm.regs.r3.field.nfrac/(double)(((uint32_t) 1)<<25))/(double)rm.regs.r1.field.rdiv;
-  } else {
-    fvco = fref*pll_divider*(double)rm.regs.r2.field.nint/(double)rm.regs.r1.field.rdiv;
-  }
-  return 2.0*fvco/(double)(1<<rm.regs.r6.field.lo_div_sel);
-}
-
-void TRF3765::reset(bool fractional=true) {
-  regmap_t init_data=REGMAP();
-//  init_data.regs.r0=(reg0_t) REG_FROM_RAW(0,XSP_REG0_WRITE);
-  init_data.regs.r1=(reg1_t) REG_FROM_RAW(1,XSP_REG1_WRITE);
-  init_data.regs.r4=(reg4_t) REG_FROM_RAW(4,XSP_REG4_WRITE);
-
-  if (fractional) {
-      init_data.regs.r2=(reg2_t) REG_FROM_RAW(2, XSP_REG2_WRITE_ENC);
-      init_data.regs.r5=(reg5_t) REG_FROM_RAW(5, XSP_REG5_WRITE_FRAC);
-      init_data.regs.r6=(reg6_t) REG_FROM_RAW(6, XSP_REG6_WRITE_FRAC);
-  } else {
-      init_data.regs.r2=(reg2_t) REG_FROM_RAW(2, XSP_REG2_WRITE);
-      init_data.regs.r5=(reg5_t) REG_FROM_RAW(5, XSP_REG5_WRITE);
-      init_data.regs.r6=(reg6_t) REG_FROM_RAW(6, XSP_REG6_WRITE);
-  }
-
-  Serial.println(F("#Init registers"));
-  tell_status(init_data);
-
-  for (int i=1;i<7;i++) _send(init_data.data[i]);
-}
-
-void TRF3765::tell_status() {
-  for (int i=0;i<7;i++)
-    _rm.data[i]=_request(RB_REQUEST(i).raw);
-  tell_status(_rm);
-}
-
-//void TRF3765::tell_status(regmap_t &rm) {
-
-//  Serial.print("en_frac=");
-//  if (rm.regs.r4.field.en_frac) Serial.println(F("true"));
-//  else Serial.println(F("false"));
-//  Serial.print("vco_sel_mode=");
-//  if (rm.regs.r2.field.vco_sel_mode) Serial.println(F("true"));
-//  else Serial.println(F("false"));
-//  Serial.print("f_REF=");Serial.print(fref);Serial.println(" MHz");
-//  Serial.print("f_PFD=");Serial.print(f_PFD(rm));Serial.println(" MHz");
-//  Serial.print("f_calclk=");Serial.print(cal_clock(rm));Serial.println(" MHz");
-//  Serial.print("df_RF=");Serial.print(2e6*f_RFSTEP(rm));Serial.println(" Hz");  //freq. doubler
-//  Serial.print("f_LO=");Serial.print(get_freq(rm), 3);Serial.println(" MHz");
-//  Serial.print(F("pll_locked="));
-//  if (locked()) Serial.print(F("true"));
-//  else Serial.print(F("false"));
-//  Serial.print(" (pin=");Serial.print(digitalRead(PIN_LOCKED));
-//  Serial.print(" rise=");Serial.print(_rise);Serial.println(")");
-//  tell_regmap(rm);
-//
-//
-////  Serial.print("Reg7: 0x");Serial.println(_request(RB_REQUEST(7).raw),HEX);
-//}
-
-
-void TRF3765::tell_status(regmap_t &rm) {
-
-    StaticJsonDocument<512> doc;
-
-    doc[F("f_REF")]=fref;
-    doc[F("f_PFD")]=f_PFD(rm);
-    doc[F("f_calclk")]=cal_clock(rm);
-    doc[F("df_RF")]=2*f_RFSTEP(rm);  //freq. doubler
-    doc[F("f_LO")]=get_freq(rm);
-    doc[F("pll_locked")]=locked();
-    Serial.print('[');
-    serializeJson(doc, Serial);Serial.println(",");
-    doc.clear();
-    JsonObject r0=doc.createNestedObject(F("r0"));
-    r0[F("raw")]=rm.regs.r0.raw;
-    r0[F("chip_id")]=rm.regs.r0.field.chip_id;
-    r0[F("r_sat_err")]=rm.regs.r0.field.r_sat_err;
-    r0[F("vco_trim")]=(uint16_t)rm.regs.r0.field.vco_trim;
-    r0[F("vco_sel")]=(uint16_t)rm.regs.r0.field.vco_sel;
-    r0[F("count_mode_mux_sel")]=rm.regs.r0.field.count_mode_mux_sel;
-    r0[F("count")]=rm.regs.r0.tst_mode.count;
-    serializeJson(doc, Serial);Serial.println(",");
-    doc.clear();
-    JsonObject r1 = doc.createNestedObject(F("r1"));
-    r1[F("raw")]=rm.regs.r1.raw;
-    r1[F("rdiv")]=rm.regs.r1.field.rdiv;
-    r1[F("invert_ref_clock")]=rm.regs.r1.field.invert_ref_clock;
-    r1[F("neg_vco")]=rm.regs.r1.field.neg_vco;
-    r1[F("icp")]=(uint16_t)rm.regs.r1.field.icp;
-    r1[F("icpdouble")]=rm.regs.r1.field.icpdouble;
-    r1[F("cal_clk_sel")]=(uint16_t)rm.regs.r1.field.cal_clk_sel;
-    serializeJson(doc, Serial);Serial.println(",");
-    doc.clear();
-    JsonObject r2 = doc.createNestedObject(F("r2"));
-    r2[F("raw")]=rm.regs.r2.raw;
-    r2[F("nint")]=rm.regs.r2.field.nint;
-    r2[F("pll_div_sel")]=(uint16_t)rm.regs.r2.field.pll_div_sel;
-    r2[F("prescale_sel")]=rm.regs.r2.field.prescale_sel;
-    r2[F("vco_sel")]=(uint16_t)rm.regs.r2.field.vco_sel;
-    r2[F("vcosel_mode")]=rm.regs.r2.field.vco_sel_mode;
-    r2[F("cal_acc")]=(uint16_t)rm.regs.r2.field.cal_acc;
-    r2[F("en_cal")]=rm.regs.r2.field.en_cal;
-    serializeJson(doc, Serial);Serial.println(",");
-    doc.clear();
-    JsonObject r3 = doc.createNestedObject(F("r3"));
-    r3[F("raw")]=rm.regs.r3.raw;
-    r3[F("nfrac")]=rm.regs.r3.field.nfrac;
-    serializeJson(doc, Serial);Serial.println(",");
-    doc.clear();
-    JsonObject r4 = doc.createNestedObject(F("r4"));
-    r4[F("raw")]=rm.regs.r4.raw;
-    r4[F("pwd_pll")]=rm.regs.r4.field.pwd_pll;
-    r4[F("pwd_cp")]=rm.regs.r4.field.pwd_cp;
-    r4[F("pwd_vco")]=rm.regs.r4.field.pwd_vco;
-    r4[F("pwd_vcomux")]=rm.regs.r4.field.pwd_vcomux;
-    r4[F("pwd_rfdiv")]=rm.regs.r4.field.pwd_rfdiv;
-    r4[F("pwd_presc")]=rm.regs.r4.field.pwd_presc;
-    r4[F("pwd_lodiv")]=rm.regs.r4.field.pwd_lodiv;
-    r4[F("pwd_buff1")]=rm.regs.r4.field.pwd_buff1;
-    r4[F("pwd_buff2")]=rm.regs.r4.field.pwd_buff2;
-    r4[F("pwd_buff3")]=rm.regs.r4.field.pwd_buff3;
-    r4[F("pwd_buff4")]=rm.regs.r4.field.pwd_buff4;
-    r4[F("en_extvco")]=rm.regs.r4.field.en_extvco;
-    r4[F("ext_vco_ctrl")]=rm.regs.r4.field.ext_vco_ctrl;
-    r4[F("en_isource")]=rm.regs.r4.field.en_isource;
-    r4[F("ld_ana_prec")]=(uint16_t)rm.regs.r4.field.ld_ana_prec;
-    r4[F("cp_tristate")]=(uint16_t)rm.regs.r4.field.cp_tristate;
-    r4[F("speedup")]=rm.regs.r4.field.speedup;
-    r4[F("ld_dig_prec")]=rm.regs.r4.field.ld_dig_prec;
-    r4[F("en_dith")]=rm.regs.r4.field.en_dith;
-    r4[F("mod_ord")]=(uint16_t)rm.regs.r4.field.mod_ord;
-    r4[F("dith_sel")]=rm.regs.r4.field.dith_sel;
-    r4[F("del_sd_clk")]=(uint16_t)rm.regs.r4.field.del_sd_clk;
-    r4[F("en_frac")]=rm.regs.r4.field.en_frac;
-    serializeJson(doc, Serial);Serial.println(",");
-    doc.clear();
-    JsonObject r5 = doc.createNestedObject(F("r5"));
-    r5[F("raw")]=rm.regs.r5.raw;
-    r5[F("vcobias_rtirm")]=(uint16_t)rm.regs.r5.field.vcobias_rtirm;
-    r5[F("pllbias_rtrim")]=(uint16_t)rm.regs.r5.field.pllbias_rtrim;
-    r5[F("vco_bias")]=(uint16_t)rm.regs.r5.field.vco_bias;
-    r5[F("vcobuf_bias")]=(uint16_t)rm.regs.r5.field.vcobuf_bias;
-    r5[F("vcomux_bias")]=(uint16_t)rm.regs.r5.field.vcomux_bias;
-    r5[F("bufout_bias")]=(uint16_t)rm.regs.r5.field.bufout_bias;
-    r5[F("vco_cal_ib")]=rm.regs.r5.field.vco_cal_ib;
-    r5[F("vco_cal_ref")]=(uint16_t)rm.regs.r5.field.vco_cal_ref;
-    r5[F("vco_ampl_ctrl")]=(uint16_t)rm.regs.r5.field.vco_ampl_ctrl;
-    r5[F("vco_vb_ctrl")]=(uint16_t)rm.regs.r5.field.vco_vb_ctrl;
-    r5[F("en_ld_isource")]=rm.regs.r5.field.en_ld_isource;
-    serializeJson(doc, Serial);Serial.println(",");
-    doc.clear();
-    JsonObject r6 = doc.createNestedObject(F("r6"));
-    r6[F("raw")]=rm.regs.r6.raw;
-    r6[F("vco_trim")]=(uint16_t)rm.regs.r6.field.vco_trim;
-    r6[F("en_lockdet")]=rm.regs.r6.field.en_lockdet;
-    r6[F("vco_test_mode")]=rm.regs.r6.field.vco_test_mode;
-    r6[F("cal_bypass")]=rm.regs.r6.field.cal_bypass;
-    r6[F("mux_ctrl")]=(uint16_t)rm.regs.r6.field.mux_ctrl;
-    r6[F("isource_sink")]=rm.regs.r6.field.isource_sink;
-    r6[F("isource_trim")]=(uint16_t)rm.regs.r6.field.isource_trim;
-    r6[F("lo_div_sel")]=(uint16_t)rm.regs.r6.field.lo_div_sel;
-    r6[F("lo_div_ib")]=(uint16_t)rm.regs.r6.field.lo_div_ib;
-    r6[F("div_mux_ref")]=(uint16_t)rm.regs.r6.field.div_mux_ref;
-    r6[F("div_mux_out")]=(uint16_t)rm.regs.r6.field.div_mux_out;
-    r6[F("div_mux_bias_ovrd")]=rm.regs.r6.field.div_mux_bias_ovrd;
-    serializeJson(doc, Serial);Serial.println("]");
-}
 
 //void TRF3765::tell_regmap(regmap_t &rm) {
 //  tell_r0(rm.regs.r0);
