@@ -84,7 +84,7 @@ typedef struct r3fields_t {
     bool en_dith:1;
     uint8_t mod_ord:2;
     bool dith_sel:1;
-    uint8_t del_sd_clk:1;
+    uint8_t del_sd_clk:2;
     bool en_frac:1;
 } r4fields_t;
 
