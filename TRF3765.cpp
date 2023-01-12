@@ -142,6 +142,19 @@ void TRF3765::g3_regmap(double freq, bool fractional, bool calibrate, regmap_t &
   rm.regs.r6.field.cal_bypass=false;
   rm.regs.r2.field.vco_sel_mode=!calibrate;
   rm.regs.r2.field.vco_sel=3; //highest freq vco
+  rm.regs.r4.field.pwd_buff2=true; //power down unused buffer
+  rm.regs.r4.field.pwd_buff3=true; //power down unused buffer
+  rm.regs.r4.field.pwd_buff4=true; //power down unused buffer
+  rm.regs.r5.field.vcobias_rtirm=4;
+  rm.regs.r5.field.pllbias_rtrim=2;
+  rm.regs.r5.field.vco_bias=5;
+  rm.regs.r5.field.vcobuf_bias=2;
+  rm.regs.r5.field.vcomux_bias=2;
+  rm.regs.r5.field.bufout_bias=3;
+  rm.regs.r5.field.vco_cal_ref=1;
+  rm.regs.r5.field.vco_vb_ctrl=1;
+
+
 
   rm.regs.r4.field.en_frac=fractional;
   if (fractional) {
