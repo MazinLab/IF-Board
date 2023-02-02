@@ -1,4 +1,5 @@
-#include <SdFat.h>
+//#include <SdFat.h>
+#include <sdios.h>
 #include <OneWire.h>  //for crc
 #include <EEPROM.h>
 #include "pe43705.h"
