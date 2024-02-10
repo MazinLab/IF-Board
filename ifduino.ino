@@ -564,7 +564,7 @@ bool WRcommand() {
   reg=instruction.arg_buffer[0]-'0';
   if (reg>6)
     return false;
-  val=strtol(instruction.arg_buffer+1, NULL, 16);
+  val=strtoul(instruction.arg_buffer+1, NULL, 16);
   lo.set_register(reg, val);
   config.lo = lo.get_freq();
   config.lo = lo.get_freq();
